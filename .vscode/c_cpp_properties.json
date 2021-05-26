@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "",
+        "limitSymbolsToIncludedHeaders": true
+      },
+      "includePath": [
+        "/home/recep/catkin_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/recep/catkin_ws/src/mav_comm/mav_msgs/include/**",
+        "/home/recep/catkin_ws/src/mav_comm/mav_planning_msgs/include/**",
+        "/home/recep/catkin_ws/src/rotors_simulator/rotors_control/include/**",
+        "/home/recep/catkin_ws/src/rotors_simulator/rotors_gazebo_plugins/include/**",
+        "/home/recep/catkin_ws/src/rotors_simulator/rotors_hil_interface/include/**",
+        "/home/recep/catkin_ws/src/rotors_simulator/rotors_joy_interface/include/**",
+        "/home/recep/catkin_ws/src/swarm_drone/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS"
+    }
+  ],
+  "version": 4
+}
