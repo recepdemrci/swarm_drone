@@ -11,7 +11,6 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 
 #define MIN_DIST 100000
-#define GOAL_THRESHOLD 0.4
 
 class Prediction {
 private:
@@ -32,6 +31,8 @@ private:
     Eigen::Vector3d center_point_;
     Eigen::Vector3d maintenance_vector_;
     Eigen::Vector3d unification_vector_;
+    Eigen::Vector3d old_target_position_w_;
+    
 
 
 public:
@@ -60,6 +61,7 @@ public:
         goal_vector_ = Eigen::Vector3d::Zero();
         maintenance_vector_ = Eigen::Vector3d::Zero();
         unification_vector_ = Eigen::Vector3d::Zero();
+        
         initParameters();
     }
 
@@ -116,7 +118,8 @@ private:
         // Calculate target_vector and convert it into target_position related to the world frame
         target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
         target_position_w = transform_vector(target_vector);
-
+        target_position_w = trajectoryStability(target_position_w);
+        
         // Create trajectory message and publish it
         trajectory_msg.header.stamp = positions_of_uavs->header.stamp;
         mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(target_position_w, target_yaw, &trajectory_msg);
@@ -164,13 +167,16 @@ private:
         // Find 2st neighbour
         min_dist = MIN_DIST;
         for (geometry_msgs::Pose uav_pose : positions_of_uavs.poses) {
-            temp_dist = dist(neighbor_1, uav_pose.position) + dist(current_position, uav_pose.position);
-            if (temp_dist < min_dist) {
-                min_dist = temp_dist;
-                neighbor_2(0) = uav_pose.position.x;
-                neighbor_2(1) = uav_pose.position.y;
-                neighbor_2(2) = uav_pose.position.z;
-            }
+            temp_dist = dist(neighbor_1, uav_pose.position);
+            if (temp_dist > 0) {
+                temp_dist += dist(current_position, uav_pose.position);
+                if (temp_dist < min_dist) {
+                    min_dist = temp_dist;
+                    neighbor_2(0) = uav_pose.position.x;
+                    neighbor_2(1) = uav_pose.position.y;
+                    neighbor_2(2) = uav_pose.position.z;
+                }
+            }            
         }
         // Find center position of three uav
         center_position = (current_position + neighbor_1 + neighbor_2) / 3;
@@ -228,14 +234,27 @@ private:
         }
     }
 
+    Eigen::Vector3d trajectoryStability(Eigen::Vector3d target_position_w) {
+        double difference;
+        Eigen::Vector3d subs;
+
+        if (old_target_position_w_.data() != NULL) {
+            subs = (target_position_w - old_target_position_w_);
+            difference = sqrt(pow(subs.x(), 2) + pow(subs.y(), 2) + pow(subs.z(), 2));
+            
+            if (difference > uniform_distance_) {
+                target_position_w = old_target_position_w_;
+            }
+        }
+        old_target_position_w_ = target_position_w;
+        return target_position_w;
+    }
+
     double dist(Eigen::Vector3d point_1, geometry_msgs::Point point_2) {
         double result = pow(point_1.x() - point_2.x,2)
                         + pow(point_1.y() - point_2.y,2)
                         + pow(point_1.z() - point_2.z,2);
         result = sqrt(result);
-        if (result == 0.0) {
-            return MIN_DIST;
-        }
         return result;
     }
 };
