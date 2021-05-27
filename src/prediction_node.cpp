@@ -11,6 +11,7 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 
 #define MIN_DIST 100000
+#define ERROR_THRESHOLD 0.5
 
 class Prediction {
 private:
@@ -33,7 +34,6 @@ private:
     Eigen::Vector3d unification_vector_;
     Eigen::Vector3d old_target_position_w_;
     
-
 
 public:
         Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh) {
@@ -70,7 +70,7 @@ private:
     void initParameters() {
         private_nh_.param<float>("uniform_distance", uniform_distance_, 2.0);
         private_nh_.param<float>("goal_factor", goal_factor_, 1.0);
-        private_nh_.param<float>("unification_factor", unification_factor_, 0.1);
+        private_nh_.param<float>("unification_factor", unification_factor_, 0.05);
     }
 
     // Calback Functions ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -178,9 +178,13 @@ private:
                 }
             }            
         }
+
+
+        // ROS_ERROR("namespace %s -- N1[%f, %f, %f]", namespace_.c_str(), neighbor_1.x(), neighbor_1.y(), neighbor_1.z());
+        // ROS_ERROR("namespace %s -- N2[%f, %f, %f]", namespace_.c_str(), neighbor_2.x(), neighbor_2.y(), neighbor_2.z());
+        
         // Find center position of three uav
         center_position = (current_position + neighbor_1 + neighbor_2) / 3;
-
         // Find angle between neighbor1 neighbor2 and uav's local x axis
         m_angle = atan((neighbor_2(1) - neighbor_1(1)) / (neighbor_2(0) - neighbor_1(0)));
         // Find sign(+-) of the PI/2 for add to angle (if center_position is behind of the uav, use opposite sign of the angle, otherwise use same sign with angle)
@@ -229,9 +233,7 @@ private:
         if ((angle < (M_PI/2)) && (angle > (-M_PI/2))) {
             return true;
         }
-        else {
-            return false;
-        }
+        return false;
     }
 
     Eigen::Vector3d trajectoryStability(Eigen::Vector3d target_position_w) {
