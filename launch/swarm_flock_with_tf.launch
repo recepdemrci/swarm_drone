@@ -3,9 +3,9 @@
   <arg name="world_name" default="basic"/>
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
-  <arg name="goal_x" default="5.0" />
-  <arg name="goal_y" default="0.0" />
-  <arg name="goal_z" default="1.5" />
+  <arg name="goal_x" default="-15.0" />
+  <arg name="goal_y" default="8.0" />
+  <arg name="goal_z" default="3.0" />
 
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
