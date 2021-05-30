@@ -11,7 +11,10 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 
 #define MIN_DIST 100000
-#define ERROR_THRESHOLD 0.5
+#define SAFE_ALTITUDE 0.5
+#define UNIT_NUMBER 4
+static const int64_t kNanoSecondsInSecond = 1000000000;
+
 
 class Prediction {
 private:
@@ -24,6 +27,7 @@ private:
     ros::Subscriber goal_direction_sub;
     ros::Subscriber positions_of_detected_uavs_sub;
 
+    bool active_;
     float goal_factor_;
     float uniform_distance_;
     float unification_factor_;
@@ -32,8 +36,7 @@ private:
     Eigen::Vector3d center_point_;
     Eigen::Vector3d maintenance_vector_;
     Eigen::Vector3d unification_vector_;
-    Eigen::Vector3d old_target_position_w_;
-    
+
 
 public:
         Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh) {
@@ -58,10 +61,10 @@ public:
             mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);   
 
         // Defination of other variable
+        active_ = false;
         goal_vector_ = Eigen::Vector3d::Zero();
         maintenance_vector_ = Eigen::Vector3d::Zero();
-        unification_vector_ = Eigen::Vector3d::Zero();
-        
+        unification_vector_ = Eigen::Vector3d::Zero();        
         initParameters();
     }
 
@@ -69,8 +72,21 @@ private:
     // Initialize ros parameters
     void initParameters() {
         private_nh_.param<float>("uniform_distance", uniform_distance_, 2.0);
-        private_nh_.param<float>("goal_factor", goal_factor_, 1.0);
-        private_nh_.param<float>("unification_factor", unification_factor_, 0.05);
+        private_nh_.param<float>("unification_factor", unification_factor_, 0.13);
+    }
+
+    void takeoff() {
+        float desired_yaw = 0.0;
+        Eigen::Vector3d desired_position(odometry_.x(), odometry_.y(), SAFE_ALTITUDE);
+        trajectory_msgs::MultiDOFJointTrajectory trajectory_msg;
+
+        active_ = true;
+        trajectory_msg.header.stamp = ros::Time::now();
+        mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(desired_position, desired_yaw, &trajectory_msg);
+        trajectory_pub.publish(trajectory_msg);
+
+        ROS_ERROR("[%s] : Active ", namespace_.c_str());
+        ros::Duration(3.0).sleep();
     }
 
     // Calback Functions ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -82,33 +98,45 @@ private:
         odometry_ = temp_odom;
     }
 
-    // Set goal_vector each time it is called
+    // Set goal_vector and goal_factor each time it is called
     void goalCallback(const geometry_msgs::PointStampedConstPtr& goal_direction) {
         Eigen::Vector3d temp_vector;
-        
+        geometry_msgs::Point current_point;
+
+        // Control if odometry is set
         if (odometry_.isZero()) {
             return;
         }
 
         // Set goal_vector based on UAV frame
-        temp_vector(0) = goal_direction->point.x - odometry_.x();
-        temp_vector(1) = goal_direction->point.y - odometry_.y();
-        temp_vector(2) = goal_direction->point.z - odometry_.z();
+        temp_vector(0) = (goal_direction->point.x - odometry_.x());
+        temp_vector(1) = (goal_direction->point.y - odometry_.y());
+        temp_vector(2) = (goal_direction->point.z - odometry_.z());
+
+        // Calculate goal_factor based om distance to the goal
+        current_point.x = 0.0;
+        current_point.y = 0.0;
+        current_point.z = 0.0;
+        goal_factor_ = (float) dist(temp_vector, current_point);
+        ROS_ERROR("[%s]  goal_factor: [%f]", namespace_.c_str(), goal_factor_);
+        
+        // Normalize goal_vector based on uniform distance
         temp_vector.normalize();
         goal_vector_ = temp_vector * uniform_distance_;
     }
 
-    // TODO: Control if gola is reached, save previous trajectory message and compare them, no big difference)
+    // TODO: Control if goal is reached, save previous trajectory message and compare them, no big difference)
     // Calculate target_position of UAV itself based on world frame each time other UAVs detected
     void positionOfDetectedUAVsCallback(const geometry_msgs::PoseArrayConstPtr& positions_of_uavs) {
-        double target_yaw = 0.0;
         Eigen::Vector3d target_vector;
-        Eigen::Vector3d target_position_w;
-        trajectory_msgs::MultiDOFJointTrajectory trajectory_msg;
+        trajectory_msgs::MultiDOFJointTrajectoryPtr trajectory_msg;
 
         // Control if goal_vector_ is set
         if (goal_vector_.isZero() || odometry_.isZero()) {
             return;
+        }
+        if (!active_) {
+            takeoff();
         }
 
         // Calculate maintenance, partition, and unification vectors
@@ -117,15 +145,42 @@ private:
 
         // Calculate target_vector and convert it into target_position related to the world frame
         target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
-        target_position_w = transform_vector(target_vector);
-        target_position_w = trajectoryStability(target_position_w);
-        
-        // Create trajectory message and publish it
-        trajectory_msg.header.stamp = positions_of_uavs->header.stamp;
-        mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(target_position_w, target_yaw, &trajectory_msg);
+        trajectory_msg = createTrajectory(target_vector);
         trajectory_pub.publish(trajectory_msg);
     }
 
+
+    // Divide target vector into unit vectors, then transform that based on world frame. Publish it as trajectory message. 
+    trajectory_msgs::MultiDOFJointTrajectoryPtr createTrajectory(Eigen::Vector3d target_vector) {
+        Eigen::Vector3d unit_target;
+        Eigen::Vector3d unit_target_w;
+        mav_msgs::EigenTrajectoryPoint trajectory_point;
+        trajectory_msgs::MultiDOFJointTrajectoryPtr trajectory_msg(new trajectory_msgs::MultiDOFJointTrajectory);
+        
+        // Initialize trajectory_msg 
+        trajectory_msg->header.stamp = ros::Time::now();
+        trajectory_msg->points.resize(UNIT_NUMBER);
+        trajectory_msg->joint_names.push_back("base_link");
+        int64_t time_from_start_ns = 0;
+        
+        // TODO: play with time_from_star_ns, and UNIT_NUMBER values
+        // Divide target_vector into units
+        unit_target = target_vector / UNIT_NUMBER;
+        for (size_t i = 0; i < UNIT_NUMBER; i++) {
+            // Transform each unit based on world frame, and control if any anomally trajectory
+            unit_target_w = transform_vector(unit_target * (i+1) );
+            if (trajectoryStability(&unit_target_w)){
+                // Create trajectory point and add it into trajectory_msg
+                trajectory_point.position_W = unit_target_w;
+                trajectory_point.setFromYaw(0.0);
+                trajectory_point.time_from_start_ns = time_from_start_ns;
+                time_from_start_ns += static_cast<int64_t>(0.05 * kNanoSecondsInSecond);
+                mav_msgs::msgMultiDofJointTrajectoryPointFromEigen(trajectory_point, &trajectory_msg->points[i]);
+            }
+            // ROS_ERROR("[%s] %ld - [%f %f %f]", namespace_.c_str(), (i+1), unit_target_w.x(), unit_target_w.y(), unit_target_w.z());
+        }
+        return trajectory_msg;
+    }
 
     // Other Functions ------------------------------------------------------------------------------------------------------------------------------------------------
     void setMaintenanceVector(double x, double y, double z) {
@@ -179,10 +234,6 @@ private:
             }            
         }
 
-
-        // ROS_ERROR("namespace %s -- N1[%f, %f, %f]", namespace_.c_str(), neighbor_1.x(), neighbor_1.y(), neighbor_1.z());
-        // ROS_ERROR("namespace %s -- N2[%f, %f, %f]", namespace_.c_str(), neighbor_2.x(), neighbor_2.y(), neighbor_2.z());
-        
         // Find center position of three uav
         center_position = (current_position + neighbor_1 + neighbor_2) / 3;
         // Find angle between neighbor1 neighbor2 and uav's local x axis
@@ -212,44 +263,62 @@ private:
             center_point_(1) += uav_pose.position.y;
             center_point_(2) += uav_pose.position.z;
         }
-        center_point_(0) /= positions_of_uavs.poses.size() + 1; 
-        center_point_(1) /= positions_of_uavs.poses.size() + 1;
-        center_point_(2) /= positions_of_uavs.poses.size() + 1;
+        center_point_(0) /= (positions_of_uavs.poses.size() + 1); 
+        center_point_(1) /= (positions_of_uavs.poses.size() + 1);
+        center_point_(2) /= (positions_of_uavs.poses.size() + 1);
         unification_vector_ = goal_vector_ * goal_factor_ + center_point_;
     }
     
-    // Transform a vector based on world frame
-    Eigen::Vector3d transform_vector(Eigen::Vector3d input_vector) {
-        Eigen::Vector3d target_position_w;
-        target_position_w(0) = input_vector.x() + odometry_.x();
-        target_position_w(1) = input_vector.y() + odometry_.y();
-        target_position_w(2) = input_vector.z() + odometry_.z();
-        return target_position_w;
-    }
-
     // Control if given uav is in the goal area (+90 -90)
     bool inGoalArea(geometry_msgs::Point uav_position) {
-        double angle = atan2(goal_vector_.y(), goal_vector_.x()) - atan2(uav_position.y, uav_position.x);
-        if ((angle < (M_PI/2)) && (angle > (-M_PI/2))) {
+        double angle_uav;
+        double angle_goal;
+
+        angle_uav = atan2(uav_position.y, uav_position.x);
+        angle_goal = atan2(goal_vector_.y(), goal_vector_.x());
+        if (angle_goal < 0) {
+            angle_goal += (2 * M_PI);
+        }
+        if (angle_uav < 0) {
+            angle_uav += (2 * M_PI);
+        }
+        double angle = abs(angle_uav - angle_goal);
+
+        if (angle < (M_PI/2)) {
             return true;
         }
         return false;
     }
 
-    Eigen::Vector3d trajectoryStability(Eigen::Vector3d target_position_w) {
+    // Transform a vector based on world frame
+    Eigen::Vector3d transform_vector(Eigen::Vector3d target_position) {
+        Eigen::Vector3d target_position_w;
+        // target_position *= 0.1;
+        target_position_w(0) = target_position.x() + odometry_.x();
+        target_position_w(1) = target_position.y() + odometry_.y();
+        target_position_w(2) = target_position.z() + odometry_.z();
+        return target_position_w;
+    }
+
+    // TODO: Is this actually working
+    bool trajectoryStability(Eigen::Vector3d *target_position_w) {
         double difference;
         Eigen::Vector3d subs;
-
-        if (old_target_position_w_.data() != NULL) {
-            subs = (target_position_w - old_target_position_w_);
-            difference = sqrt(pow(subs.x(), 2) + pow(subs.y(), 2) + pow(subs.z(), 2));
+        
+        // // Control if there is anomaly target position 
+        // if (! odometry_.isZero()) {
+        //     subs = target_position_w->array() - odometry_.array();
+        //     difference = sqrt(pow(subs.x(), 2) + pow(subs.y(), 2) + pow(subs.z(), 2));
             
-            if (difference > uniform_distance_) {
-                target_position_w = old_target_position_w_;
-            }
+        //     if (difference > uniform_distance_) {
+        //         return false;
+        //     }
+        // }
+        // Keep uav safe altitude
+        if ((*target_position_w)(2) < SAFE_ALTITUDE) {
+            (*target_position_w)(2) = SAFE_ALTITUDE + 0.2;
         }
-        old_target_position_w_ = target_position_w;
-        return target_position_w;
+        return true;
     }
 
     double dist(Eigen::Vector3d point_1, geometry_msgs::Point point_2) {

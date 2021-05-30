@@ -17,6 +17,9 @@ private:
     ros::Publisher positions_of_detected_uavs_pub;
     ros::Publisher goal_direction_pub;
 
+    double goal_x;
+    double goal_y;
+    double goal_z;
     int swarm_size_;
     std::string mav_name_;
 
@@ -45,19 +48,20 @@ private:
     // Initialize ros parameters
     void initParameters() {
         private_nh_.param<int>("swarm_size", swarm_size_, 5);
+        private_nh_.param<double>("goal_x", goal_x, -5.0);
+        private_nh_.param<double>("goal_y", goal_y, 0.0);
+        private_nh_.param<double>("goal_z", goal_z, 1.5);
+
     }
 
     void publishGoalDirection() {
-        // tf2_ros::Buffer tfBuffer;
-        // tf2_ros::TransformListener tfListener(tfBuffer);
         geometry_msgs::PointStamped goal_direction;
 
         goal_direction.header.stamp = ros::Time::now();
         goal_direction.header.frame_id = "world";
-        goal_direction.point.x = 5.0;
-        goal_direction.point.y = 0.0;
-        goal_direction.point.z = 1.0;
-
+        goal_direction.point.x = goal_x;
+        goal_direction.point.y = goal_y;
+        goal_direction.point.z = goal_z;
         goal_direction_pub.publish(goal_direction);
     }
 
