@@ -12,7 +12,7 @@
 
 #define MIN_DIST 100000                                     // Enormous distance for calculate min distance between two UAV
 #define SAFE_ALTITUDE 0.5                                   // Safe altitude for each UAV (UAVs can't be below this altitude)
-#define UNIT_NUMBER 4                                       // Divide trajectory UNIT_NUMBER value parts to prevent big movement
+#define UNIT_NUMBER 4                                       // Divide trajectory UNIT_NUMBER value parts to prevent big movement(unit_distance 2, UNIT_NUMBER 4)
 static const int64_t kNanoSecondsInSecond = 1000000000;
 
 
@@ -71,10 +71,11 @@ public:
 private:       
     // Initialize ros parameters
     void initParameters() {
-        private_nh_.param<float>("uniform_distance", uniform_distance_, 2.0);
+        private_nh_.param<float>("uniform_distance", uniform_distance_, 4.0);
         private_nh_.param<float>("unification_factor", unification_factor_, 0.14);
     }
 
+    // TODO: We can make 'pow(uniform_distance_, 3)' -> a constant MAX VALUE 
     // Set goal_factor based on proximity to goal 
     void setGoalFactor(Eigen::Vector3d goal_vector) {
         geometry_msgs::Point current_point;
@@ -281,22 +282,29 @@ private:
     }
 
     // Divide target vector into unit vectors, then transform that based on world frame. Publish it as trajectory message. 
+    // time_from_star_ns: When we divide target_vector into parts, each parts will take time based on this parameter
+    //                    If it gets bigger, there will be lag. If it gets smaller, there will be crashed
+    // unit_number: Number of divided parts for one trajectory. It will arrange based on uniform_distance
     trajectory_msgs::MultiDOFJointTrajectoryPtr createTrajectory(Eigen::Vector3d target_vector) {
+        int unit_number;
         Eigen::Vector3d unit_target;
         Eigen::Vector3d unit_target_w;
         mav_msgs::EigenTrajectoryPoint trajectory_point;
         trajectory_msgs::MultiDOFJointTrajectoryPtr trajectory_msg(new trajectory_msgs::MultiDOFJointTrajectory);
         
+        // Initialize unit_number based on uniform_distance
+        // unit_number = UNIT_NUMBER;
+        unit_number = uniform_distance_ *2;
+        
         // Initialize trajectory_msg 
         trajectory_msg->header.stamp = ros::Time::now();
-        trajectory_msg->points.resize(UNIT_NUMBER);
+        trajectory_msg->points.resize(unit_number);
         trajectory_msg->joint_names.push_back("base_link");
         int64_t time_from_start_ns = 0;
         
-        // TODO: play with time_from_star_ns, and UNIT_NUMBER values
         // Divide target_vector into units
-        unit_target = target_vector * (1.0 / UNIT_NUMBER);
-        for (size_t i = 0; i < UNIT_NUMBER; i++) {
+        unit_target = target_vector * (1.0 / unit_number);
+        for (size_t i = 0; i < unit_number; i++) {
             // Transform each unit based on world frame, and control if any anomally trajectory
             unit_target_w = transform_vector(unit_target * (i+1) );
             controlTarget(&unit_target_w);
@@ -305,13 +313,13 @@ private:
             trajectory_point.position_W = unit_target_w;
             trajectory_point.setFromYaw(0.0);
             trajectory_point.time_from_start_ns = time_from_start_ns;
+            // 
             time_from_start_ns += static_cast<int64_t>(0.1 * kNanoSecondsInSecond);
             mav_msgs::msgMultiDofJointTrajectoryPointFromEigen(trajectory_point, &trajectory_msg->points[i]);
         }
         return trajectory_msg;
     }
 
-    // TODO: Add if there is any anomaly trajectory 
     void controlTarget(Eigen::Vector3d *target_position_w) {
         // Keep uav safe altitude
         if ((*target_position_w)(2) < SAFE_ALTITUDE) {

@@ -69,39 +69,29 @@ private:
     void publishMavPositions() {
         geometry_msgs::Pose temp_pose;
         geometry_msgs::PoseArray pose_array;
-        geometry_msgs::TransformStamped transformStamped[4];          
+        geometry_msgs::TransformStamped transformStamped[(swarm_size_ - 1)];          
         tf2_ros::Buffer tfBuffer;
         tf2_ros::TransformListener tfListener(tfBuffer);
 
         int id = namespace_.back() - '0';
         try{
-            transformStamped[0] = tfBuffer.lookupTransform(mav_name_ + std::to_string(id) + "/base_link", mav_name_ + std::to_string((id+1) % swarm_size_) + "/base_link", 
-                                                        ros::Time(0), ros::Duration(3.0));
-            transformStamped[1] = tfBuffer.lookupTransform(mav_name_ + std::to_string(id) + "/base_link", mav_name_ + std::to_string((id+2) % swarm_size_) + "/base_link", 
-                                                        ros::Time(0), ros::Duration(3.0));
-            transformStamped[2] = tfBuffer.lookupTransform(mav_name_ + std::to_string(id) + "/base_link", mav_name_ + std::to_string((id+3) % swarm_size_) + "/base_link", 
-                                                        ros::Time(0), ros::Duration(3.0));
-            transformStamped[3] = tfBuffer.lookupTransform(mav_name_ + std::to_string(id) + "/base_link", mav_name_ + std::to_string((id+4) % swarm_size_) + "/base_link", 
-                                                        ros::Time(0), ros::Duration(3.0));
-            
             pose_array.header.stamp = ros::Time::now();
             pose_array.header.frame_id = namespace_.substr(1) + "/base_link";
-            temp_pose.position.x = transformStamped[0].transform.translation.x;
-            temp_pose.position.y = transformStamped[0].transform.translation.y;
-            temp_pose.position.z = transformStamped[0].transform.translation.z;
-            pose_array.poses.push_back(temp_pose);
-            temp_pose.position.x = transformStamped[1].transform.translation.x;
-            temp_pose.position.y = transformStamped[1].transform.translation.y;
-            temp_pose.position.z = transformStamped[1].transform.translation.z;
-            pose_array.poses.push_back(temp_pose);
-            temp_pose.position.x = transformStamped[2].transform.translation.x;
-            temp_pose.position.y = transformStamped[2].transform.translation.y;
-            temp_pose.position.z = transformStamped[2].transform.translation.z;
-            pose_array.poses.push_back(temp_pose);
-            temp_pose.position.x = transformStamped[3].transform.translation.x;
-            temp_pose.position.y = transformStamped[3].transform.translation.y;
-            temp_pose.position.z = transformStamped[3].transform.translation.z;
-            pose_array.poses.push_back(temp_pose);
+            
+            for (int i = 0; i < (swarm_size_ - 1); i ++) {
+                // Transform poistion of UAVs based on current UAV frame
+                transformStamped[i] = tfBuffer.lookupTransform(
+                                                mav_name_ + std::to_string(id) + "/base_link", 
+                                                mav_name_ + std::to_string((id+i+1) % swarm_size_) + "/base_link",
+                                                ros::Time(0), ros::Duration(3.0));
+            
+                // Add UAV position into PoseArray
+                temp_pose.position.x = transformStamped[i].transform.translation.x;
+                temp_pose.position.y = transformStamped[i].transform.translation.y;
+                temp_pose.position.z = transformStamped[i].transform.translation.z;
+                pose_array.poses.push_back(temp_pose);
+            }
+    
             positions_of_detected_uavs_pub.publish(pose_array);
         }
         catch (tf2::TransformException &ex) {
