@@ -1,12 +1,12 @@
 <launch>
   <arg name="mav_name" default="iris"/>
-  <arg name="world_name" default="basic"/>
+  <arg name="world_name" default="uav_track"/>
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
   <arg name="swarm_size" default="5" />
   <arg name="goal_x" default="-20.0" />
-  <arg name="goal_y" default="5.0" />
-  <arg name="goal_z" default="3.0" />
+  <arg name="goal_y" default="6.0" />
+  <arg name="goal_z" default="2.0" />
 
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
@@ -26,7 +26,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_0"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="0.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
@@ -53,7 +53,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_1"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="1.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
@@ -80,7 +80,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_2"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="-1.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
@@ -107,7 +107,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_3"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="-2.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
@@ -134,7 +134,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_4"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="2.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">

@@ -6,6 +6,7 @@
 #include <mav_msgs/default_topics.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
+#include <vision_msgs/BoundingBox3DArray.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
@@ -26,6 +27,7 @@ private:
     ros::Subscriber odometry_sub;
     ros::Subscriber goal_direction_sub;
     ros::Subscriber positions_of_detected_uavs_sub;
+    ros::Subscriber detected_straits_sub;
 
     bool active_;
     float goal_factor_;
@@ -36,6 +38,9 @@ private:
     Eigen::Vector3d center_point_;
     Eigen::Vector3d maintenance_vector_;
     Eigen::Vector3d unification_vector_;
+    Eigen::Vector3d partition_vector_;
+    std::vector<vision_msgs::BoundingBox3D> detected_straits_;
+    
 
 
 public:
@@ -55,6 +60,9 @@ public:
         positions_of_detected_uavs_sub = nh_.subscribe(
             "detected_uavs_positions", 1, 
             &Prediction::positionOfDetectedUAVsCallback, this);
+        detected_straits_sub = nh_.subscribe(
+            "detected_straits", 1,
+            &Prediction::detectedStraitsCallback, this);
 
         // Definition of publishers
         trajectory_pub = nh_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
@@ -64,14 +72,15 @@ public:
         active_ = false;
         goal_vector_ = Eigen::Vector3d::Zero();
         maintenance_vector_ = Eigen::Vector3d::Zero();
-        unification_vector_ = Eigen::Vector3d::Zero();        
+        unification_vector_ = Eigen::Vector3d::Zero();
+        partition_vector_ = Eigen::Vector3d::Zero();
         initParameters();
     }
 
 private:       
-    // Initialize ros parameters
+    // Initialize node parameters
     void initParameters() {
-        private_nh_.param<float>("uniform_distance", uniform_distance_, 4.0);
+        private_nh_.param<float>("uniform_distance", uniform_distance_, 3.0);
         private_nh_.param<float>("unification_factor", unification_factor_, 0.14);
     }
 
@@ -99,6 +108,14 @@ private:
         maintenance_vector_ = temp_vector;
     }
 
+    void setPartitionVector(Eigen::Vector3d favorite_vector, int idx) {
+        float temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), detected_straits_[idx].center.position);
+        partition_vector_(0) = temp_factor * favorite_vector(0);
+        partition_vector_(1) = temp_factor * favorite_vector(1);
+        partition_vector_(2) = detected_straits_[idx].center.position.z;
+        partition_vector_ += goal_vector_;
+    }
+
     void takeoff() {
         float desired_yaw = 0.0;
         Eigen::Vector3d desired_position(odometry_.x(), odometry_.y(), SAFE_ALTITUDE);
@@ -110,7 +127,7 @@ private:
         trajectory_pub.publish(trajectory_msg);
 
         ROS_ERROR("[%s] : Active ", namespace_.c_str());
-        ros::Duration(3.0).sleep();
+        ros::Duration(2.0).sleep();
     }
 
 
@@ -146,6 +163,12 @@ private:
         goal_vector_ = temp_vector * uniform_distance_;
     }
 
+    void detectedStraitsCallback(const vision_msgs::BoundingBox3DArrayConstPtr& detected_straits) {
+        detected_straits_ = detected_straits->boxes;      
+    }
+
+
+    // TODO: Control if UAV did not detect any other UAVs
     // Calculate target_position of UAV itself based on world frame each time other UAVs detected
     void positionOfDetectedUAVsCallback(const geometry_msgs::PoseArrayConstPtr& positions_of_uavs) {
         Eigen::Vector3d target_vector;
@@ -160,11 +183,17 @@ private:
         }
 
         // Calculate maintenance, partition, and unification vectors
-        calculateMaintenance(*positions_of_uavs);
-        calculateUnification(*positions_of_uavs);
+        calculateMaintenance(*positions_of_uavs);    
 
-        // Calculate target_vector and convert it into target_position related to the world frame
-        target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
+        if (calculatePartition()) {
+            target_vector = maintenance_vector_ + partition_vector_ ;
+        }
+        else {
+            calculateUnification(*positions_of_uavs);
+            target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
+        }
+
+        // Convert target_vector into target_position related to the world frame
         trajectory_msg = createTrajectory(target_vector);
         trajectory_pub.publish(trajectory_msg);
     }
@@ -232,9 +261,45 @@ private:
         setMaintenanceVector(target(0), target(1), target(2));
     }
     
-    // TODO: Implement this function
-    void calculatePartition() {
+    bool calculatePartition() {
+        Eigen::Vector3d fav_vector;
+        Eigen::Vector3d max_fav_vector;
+        int i, max_idx;
 
+        if (!detected_straits_.empty()) {
+            
+            i = 0;
+            max_fav_vector.setZero();
+            for (vision_msgs::BoundingBox3D strait : detected_straits_) {
+                // Control if strait is in front of the UAV and close enough
+                if (inGoalArea(strait.center.position)) {
+                    fav_vector = findFavVector(strait);
+                    if (fav_vector.norm() > max_fav_vector.norm()) {
+                        max_fav_vector = fav_vector;
+                        max_idx = i;
+                    }
+                    else if (fav_vector.norm() == max_fav_vector.norm()) {
+                        double norm_1 = (fav_vector + maintenance_vector_).norm();
+                        double norm_2 = (max_fav_vector + maintenance_vector_).norm();
+                        if (norm_1 > norm_2) {
+                            max_fav_vector = fav_vector;
+                            max_idx = i;
+                        }
+                    }
+                }
+            }
+            if (!max_fav_vector.isZero()) { 
+                setPartitionVector(max_fav_vector, max_idx);
+                detected_straits_.clear();
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
+        else {
+            return false;
+        }
     }
     
     void calculateUnification(geometry_msgs::PoseArray positions_of_uavs) {
@@ -266,10 +331,31 @@ private:
         }
         double angle = abs(angle_uav - angle_goal);
 
-        if (angle < (M_PI/2)) {
+        if (angle < (M_PI/2) - 0.02) {
             return true;
         }
         return false;
+    }
+
+    // Find favorite vecctor into straits for partition
+    Eigen::Vector3d findFavVector(vision_msgs::BoundingBox3D strait) {
+        float width;
+        float distance;
+        double fav_norm;
+        Eigen::Vector3d fav_vector;
+
+        // Find width of the straits and distance to it's center
+        width = (abs(strait.size.y) + abs(strait.size.x)) * 2;
+        distance = (float) dist(Eigen::Vector3d::Zero(), strait.center.position);
+
+        // Calculate direction and magnitude of the favorite vector
+        fav_norm = width / pow(distance, 2);
+        fav_vector(0) = strait.center.position.x;
+        fav_vector(1) = strait.center.position.y;
+        fav_vector(2) = strait.center.position.z;
+        // fav_vector = fav_vector.normalized() * uniform_distance_;
+        fav_vector = fav_vector.normalized() * fav_norm;
+        return fav_vector;
     }
 
     // Transform a vector based on world frame
@@ -335,6 +421,7 @@ private:
         result = sqrt(result);
         return result;
     }
+
 };
 
 
