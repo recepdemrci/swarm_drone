@@ -36,6 +36,7 @@ private:
 
     uint16_t id_;
     bool active_;
+    int pass_flag;
     float goal_factor_;
     float uniform_distance_;
     float unification_factor_;
@@ -90,6 +91,7 @@ public:
 
         // Defination of other variable
         active_ = false;
+        pass_flag = 0;
         id_ = namespace_.back() - '0';
         authority_.push_back(id_);
         goal_vector_ = Eigen::Vector3d::Zero();
@@ -107,6 +109,7 @@ private:
         private_nh_.param<float>("unification_factor", unification_factor_, 0.14);
     }
 
+    // Set uniform_distance (control min value while changing)
     bool setUniformDistance(float uniform_distance) {
         if ( uniform_distance < 1.5) {
             uniform_distance_ = 1.5;
@@ -134,18 +137,26 @@ private:
     }
 
     // Set goal_vector related to the UAV base_link from given goal_posiiton
-    void setGoalVector(geometry_msgs::Point goal_position) {
+    void setGoalVector(geometry_msgs::Point goal_position, bool world=true) {
         Eigen::Vector3d temp_vector;
 
-        // Control if odometry is set
-        if (odometry_.isZero()) {
-            return;
-        }
+        if (world) {
+            // Control if odometry is set
+            if (odometry_.isZero()) {
+                return;
+            }
 
-        // Set goal_vector based on UAV frame
-        temp_vector(0) = (goal_position.x - odometry_.x());
-        temp_vector(1) = (goal_position.y - odometry_.y());
-        temp_vector(2) = (goal_position.z - odometry_.z());
+            // Set goal_vector based on UAV frame
+            temp_vector(0) = (goal_position.x - odometry_.x());
+            temp_vector(1) = (goal_position.y - odometry_.y());
+            temp_vector(2) = (goal_position.z - odometry_.z());
+        }
+        else {
+            // Set goal_vector which is already in UAV frame
+            temp_vector(0) = goal_position.x;
+            temp_vector(1) = goal_position.y;
+            temp_vector(2) = goal_position.z;
+        }
 
         // Set goal_factor
         setGoalFactor(temp_vector);    
@@ -164,20 +175,26 @@ private:
         maintenance_vector_ = temp_vector;
     }
 
-    void takeoff() {
+    void takeoff(float altitude) {
         float desired_yaw = 0.0;
-        Eigen::Vector3d desired_position(odometry_.x(), odometry_.y(), SAFE_ALTITUDE);
+        Eigen::Vector3d desired_position(odometry_.x(), odometry_.y(), altitude);
         trajectory_msgs::MultiDOFJointTrajectory trajectory_msg;
 
-        active_ = true;
         trajectory_msg.header.stamp = ros::Time::now();
         mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(desired_position, desired_yaw, &trajectory_msg);
         trajectory_pub.publish(trajectory_msg);
-
-        ROS_ERROR("[%s] : Active ", namespace_.c_str());
         ros::Duration(2.0).sleep();
     }
 
+    void goTo(Eigen::Vector3d position_w, float desired_yaw = 0.0) {
+        trajectory_msgs::MultiDOFJointTrajectory trajectory_msg;
+
+        trajectory_msg.header.stamp = ros::Time::now();
+        mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(position_w, desired_yaw, &trajectory_msg);
+        ROS_ERROR("[%s] %f %f %f", namespace_.c_str(), position_w.x(), position_w.y(), position_w.z());
+        trajectory_pub.publish(trajectory_msg);
+        ros::Duration(3.0).sleep();
+    }
 
     // Calback Functions ------------------------------------------------------------------------------------------------------------------------------------------------
     // Every second call this function as heartbeat
@@ -199,7 +216,6 @@ private:
         if (compareAuthority(authority_msg->data) == 1) {
             authority_ = authority_msg->data;
             authority_.push_back(id_);
-            ROS_ERROR("[%s] %d %d", namespace_.c_str(), *authority_.begin(), *(authority_.end() - 1) );
         }
     }
 
@@ -232,12 +248,14 @@ private:
             return;
         }
         if (!active_) {
-            takeoff();
+            takeoff(SAFE_ALTITUDE);
+            active_ = true;
+            ROS_ERROR("[%s] : Active ", namespace_.c_str());
         }
 
         // Calculate maintenance, partition, and unification vectors
-        int idx = calculateNextGoal();
-        if (idx < 0) {
+        
+        if (!calculateNextGoal()) {
             calculateMaintenance(*positions_of_uavs);    
             calculateUnification(*positions_of_uavs);
             target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
@@ -248,12 +266,23 @@ private:
 
         }
         else {
-            target_vector(0) = detected_straits_[idx].center.position.x + goal_vector_.x();
-            target_vector(1) = detected_straits_[idx].center.position.y + goal_vector_.y();
-            target_vector(2) = detected_straits_[idx].center.position.z;
+            ROS_ERROR("test");
+            calculateMaintenance(*positions_of_uavs);
+            target_vector = partition_vector_;
             trajectory_msg = createTrajectory(target_vector);
             trajectory_pub.publish(trajectory_msg);
-            setGoalVector(saved_goal_position_);
+
+            // Get same altitude with center of strait
+            // position_w = odometry_;
+            // position_w(2) += detected_straits_[strait_idx].center.position.z;
+            // goTo(position_w);
+            
+            // int factor = 0.1 * goal_vector_.x() / abs(goal_vector_.x());
+            // int authority_idx = getIndex(id_);
+            // position_w(0) = odometry_.x() + detected_straits_[strait_idx].center.position.x - (factor * uniform_distance_ * (authority_idx + 1));
+            // position_w(1) = odometry_.y() + detected_straits_[strait_idx].center.position.y - (factor * uniform_distance_ * (authority_idx + 1));
+            // goTo(position_w);
+            // setGoalVector(saved_goal_position_);
         }
 
     }
@@ -321,46 +350,128 @@ private:
         setMaintenanceVector(target(0), target(1), target(2));
     }
     
-    int calculateNextGoal() {
+    bool calculateNextGoal() {
+        int i, max_idx;
+        int authority_idx, authority_factor;
         Eigen::Vector3d fav_vector;
         Eigen::Vector3d max_fav_vector;
-        int i, max_idx;
+        Eigen::Vector3d target_before_pass;
+        vision_msgs::BoundingBox3D the_strait;
 
-        if (!detected_straits_.empty()) {
-            
-            i = 0;
-            max_fav_vector.setZero();
-            for (vision_msgs::BoundingBox3D strait : detected_straits_) {
-                // Control if strait is in front of the UAV and close enough
-                if (inGoalArea(strait.center.position)) {
-                    fav_vector = findFavVector(strait);
-                    if (fav_vector.norm() > max_fav_vector.norm()) {
-                        max_fav_vector = fav_vector;
-                        max_idx = i;
-                    }
-                }
+        // If there is no strait and UAV isn't passin throug an strait, set goal_vector as final destination
+        if (detected_straits_.empty() && pass_flag == 0) {
+            setGoalVector(saved_goal_position_);
+            return false;
+        }
+
+        // Find closest strait to the UAV, which is in the goal direction area
+        max_fav_vector.setZero();
+        for (vision_msgs::BoundingBox3D strait : detected_straits_) {
+            fav_vector = findFavVector(strait);
+            if (inGoalArea(strait.center.position) && fav_vector.norm() > max_fav_vector.norm()) {
+                max_fav_vector = fav_vector;
+                the_strait = strait;
             }
+        }
+        detected_straits_.clear();
 
-            if (!max_fav_vector.isZero()) { 
-                // setPartitionVector(max_fav_vector, max_idx);
-                // Set closest strait as the goal_vector_ 
-                setGoalVector(detected_straits_[max_idx].center.position);
-                
-                if (isReachedGoal(detected_straits_[max_idx].center.position)) {
-                    // setUniformDistance(uniform_distance_ / 2);
-                    
-                    return max_idx; // TODO: buradan sonra edlikten sırayle geçmeyi tammala
+        // If there isn't appropriate strait, set goal_vector as final destination
+        if (max_fav_vector.isZero() && pass_flag == 0) {
+            setGoalVector(saved_goal_position_);
+            return false;
+        }
+
+        float temp_factor;
+        switch (pass_flag) {
+            case 0: 
+            // First step for passing through strait, come same altitude and orientation with strait
+                if (isReachedGoal(the_strait.center.position)) {
+                    target_before_pass.setZero();
+                    target_before_pass(2) = the_strait.center.position.z;
+                    partition_vector_ = target_before_pass;
+                    pass_flag ++; 
                 }
                 else {
-                    detected_straits_.clear();
-                    return -1;
+                    setGoalVector(the_strait.center.position, false);
+                    return false;
                 }
-            }
-            detected_straits_.clear();    
+                break;
+            case 1:
+                temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), the_strait.center.position);
+                partition_vector_(0) = temp_factor * max_fav_vector(0);
+                partition_vector_(1) = temp_factor * max_fav_vector(1);
+                partition_vector_(2) = the_strait.center.position.z;
+                partition_vector_ += goal_vector_;
+                pass_flag --;
+                break;
+            default:
+                // ros::Duration((double)authority_.size());
+                pass_flag = 0;
+                break;
         }
-        uniform_distance_ = 3.0;
-        setGoalVector(saved_goal_position_);
-        return -1;
+        return true;
+
+
+        // // Set goal_vector as the strait position
+        // setGoalVector(the_strait.center.position, false);
+        // if (isReachedGoal(the_strait.center.position)) {
+        //     // setUniformDistance(uniform_distance_ / 2);
+
+            
+        //     authority_idx = getIndex(id_);
+        //     authority_factor = uniform_distance_ * (goal_vector_.x() / abs(goal_vector_.x()));
+        //     target_before_pass.x = odometry_.x() + the_strait.center.position.x - authority_factor * authority_idx;
+        //     target_before_pass.y = odometry_.y();
+        //     pass_flag = 1;
+        //     return;
+        // }
+        // return;
+
+
+
+        // if (!detected_straits_.empty()) {
+            
+        //     i = 0;
+        //     max_fav_vector.setZero();
+        //     for (vision_msgs::BoundingBox3D strait : detected_straits_) {
+        //         // Control if strait is in front of the UAV and close enough
+        //         if (inGoalArea(strait.center.position)) {
+        //             fav_vector = findFavVector(strait);
+        //             if (fav_vector.norm() > max_fav_vector.norm()) {
+        //                 max_fav_vector = fav_vector;
+        //                 max_idx = i;
+        //             }
+        //         }
+        //     }
+
+        //     if (!max_fav_vector.isZero()) { 
+        //         // setPartitionVector(max_fav_vector, max_idx);
+        //         // Set closest strait as the goal_vector_ 
+        //         setGoalVector(detected_straits_[max_idx].center.position);
+                
+        //         if (isReachedGoal(detected_straits_[max_idx].center.position)) {
+        //             setUniformDistance(uniform_distance_ / 2);
+        //             authority_idx = getIndex(id_);
+        //             authority_factor = 2.0 * goal_vector_.x() / abs(goal_vector_.x());
+                    
+        //             target_vector(0) = detected_straits_[max_idx].center.position.x + authority_factor * uniform_distance_;
+        //             target_vector(1) = detected_straits_[max_idx].center.position.y;
+        //             target_vector(2) = detected_straits_[max_idx].center.position.z;
+        //             partition_vector_ = target_vector;
+        //             detected_straits_.clear();
+                    
+        //             return max_idx;
+        //         }
+        //         else {
+        //             detected_straits_.clear();
+        //             return -1;
+        //         }
+        //     }
+        //     detected_straits_.clear();    
+        // }
+        // setGoalVector(saved_goal_position_);
+        // // uniform_distance_ = 3.0;
+        // return -1;
     }
     
     void calculateUnification(geometry_msgs::PoseArray positions_of_uavs) {
@@ -423,6 +534,7 @@ private:
 
     // Control if UAV is close enough to the goal
     bool isReachedGoal(geometry_msgs::Point goal_position) {
+        // if (dist(Eigen::Vector3d::Zero(), goal_position) < 1.0) {
         if (dist(Eigen::Vector3d::Zero(), goal_position) < uniform_distance_) {
             return true;
         }
@@ -516,6 +628,14 @@ private:
         return result;
     }
 
+    int getIndex(uint16_t item) {
+        auto ref = std::find(authority_.begin(), authority_.end(), item);
+        
+        if (ref != authority_.end()) {
+            return (ref - authority_.begin());
+        }
+        return - 1;
+    }
 };
 
 
