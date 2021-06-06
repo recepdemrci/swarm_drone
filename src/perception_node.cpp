@@ -123,7 +123,7 @@ private:
             temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.1;
             temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
             temp_box.size.x = 0.0;
-            temp_box.size.y = 0.5;
+            temp_box.size.y = 1.0;
             temp_box.size.z = 0.5;
             detected_straits.boxes.push_back(temp_box);
 
@@ -131,7 +131,7 @@ private:
             temp_box.center.position.y = transformStamped[0].transform.translation.y + 2.5;
             temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
             temp_box.size.x = 0.0;
-            temp_box.size.y = 0.5;
+            temp_box.size.y = 1.0;
             temp_box.size.z = 0.5;
             detected_straits.boxes.push_back(temp_box);
             // }

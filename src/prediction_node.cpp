@@ -2,6 +2,7 @@
 
 #include <ros/ros.h>
 #include <Eigen/Core>
+#include <std_msgs/UInt16MultiArray.h>
 #include <mav_msgs/conversions.h>
 #include <mav_msgs/default_topics.h>
 #include <geometry_msgs/PoseArray.h>
@@ -21,34 +22,47 @@ class Prediction {
 private:
     ros::NodeHandle nh_;
     ros::NodeHandle private_nh_;
+    ros::NodeHandle global_nh_;
     std::string namespace_;
 
+    ros::Timer heartbeat;
     ros::Publisher trajectory_pub;
+    ros::Publisher authority_pub;
+    ros::Subscriber authority_sub;
     ros::Subscriber odometry_sub;
     ros::Subscriber goal_direction_sub;
-    ros::Subscriber positions_of_detected_uavs_sub;
     ros::Subscriber detected_straits_sub;
+    ros::Subscriber positions_of_detected_uavs_sub;
 
+    uint16_t id_;
     bool active_;
     float goal_factor_;
     float uniform_distance_;
     float unification_factor_;
+    std::vector<uint16_t> authority_;
     Eigen::Vector3d odometry_;
     Eigen::Vector3d goal_vector_;
     Eigen::Vector3d center_point_;
     Eigen::Vector3d maintenance_vector_;
     Eigen::Vector3d unification_vector_;
     Eigen::Vector3d partition_vector_;
+    geometry_msgs::Point saved_goal_position_;
     std::vector<vision_msgs::BoundingBox3D> detected_straits_;
     
 
 
 public:
-        Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh) {
+        Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh, const ros::NodeHandle& global_nh) {
         // Definition of ros nodehandler
         nh_ = nh;
         private_nh_ = private_nh;
+        global_nh_ = global_nh;
         namespace_ = nh_.getNamespace();
+
+        // Definition of Timer
+        heartbeat = nh_.createTimer(
+            ros::Duration(1.0), 
+            &Prediction::heartbeatCallback, this);
 
         // Definition of subscribers       
         odometry_sub = nh_.subscribe(
@@ -63,13 +77,21 @@ public:
         detected_straits_sub = nh_.subscribe(
             "detected_straits", 1,
             &Prediction::detectedStraitsCallback, this);
+        authority_sub = global_nh_.subscribe(
+            "authority", 1,
+            &Prediction::authorityCallback, this);
 
         // Definition of publishers
         trajectory_pub = nh_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
-            mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);   
+            mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);
+        authority_pub = global_nh_.advertise<std_msgs::UInt16MultiArray>(
+            "authority", 10);   
+
 
         // Defination of other variable
         active_ = false;
+        id_ = namespace_.back() - '0';
+        authority_.push_back(id_);
         goal_vector_ = Eigen::Vector3d::Zero();
         maintenance_vector_ = Eigen::Vector3d::Zero();
         unification_vector_ = Eigen::Vector3d::Zero();
@@ -77,11 +99,23 @@ public:
         initParameters();
     }
 
-private:       
+private:
+    // Setter/Getter Functions ------------------------------------------------------------------------------------------------------------------------------------------
     // Initialize node parameters
     void initParameters() {
         private_nh_.param<float>("uniform_distance", uniform_distance_, 3.0);
         private_nh_.param<float>("unification_factor", unification_factor_, 0.14);
+    }
+
+    bool setUniformDistance(float uniform_distance) {
+        if ( uniform_distance < 1.5) {
+            uniform_distance_ = 1.5;
+            return false;
+        }
+        else {
+            uniform_distance_ = uniform_distance;
+            return true;
+        }
     }
 
     // TODO: We can make 'pow(uniform_distance_, 3)' -> a constant MAX VALUE 
@@ -99,6 +133,28 @@ private:
         }
     }
 
+    // Set goal_vector related to the UAV base_link from given goal_posiiton
+    void setGoalVector(geometry_msgs::Point goal_position) {
+        Eigen::Vector3d temp_vector;
+
+        // Control if odometry is set
+        if (odometry_.isZero()) {
+            return;
+        }
+
+        // Set goal_vector based on UAV frame
+        temp_vector(0) = (goal_position.x - odometry_.x());
+        temp_vector(1) = (goal_position.y - odometry_.y());
+        temp_vector(2) = (goal_position.z - odometry_.z());
+
+        // Set goal_factor
+        setGoalFactor(temp_vector);    
+
+        // Normalize goal_vector based on uniform distance
+        temp_vector.normalize();
+        goal_vector_ = temp_vector * uniform_distance_;
+    }
+
     // Set maintenance_vector with parameters
     void setMaintenanceVector(double x, double y, double z) {
         Eigen::Vector3d temp_vector;
@@ -106,14 +162,6 @@ private:
         temp_vector(1) = y;
         temp_vector(2) = z;
         maintenance_vector_ = temp_vector;
-    }
-
-    void setPartitionVector(Eigen::Vector3d favorite_vector, int idx) {
-        float temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), detected_straits_[idx].center.position);
-        partition_vector_(0) = temp_factor * favorite_vector(0);
-        partition_vector_(1) = temp_factor * favorite_vector(1);
-        partition_vector_(2) = detected_straits_[idx].center.position.z;
-        partition_vector_ += goal_vector_;
     }
 
     void takeoff() {
@@ -132,7 +180,29 @@ private:
 
 
     // Calback Functions ------------------------------------------------------------------------------------------------------------------------------------------------
+    // Every second call this function as heartbeat
+    void heartbeatCallback(const ros::TimerEvent& event) {
+        std_msgs::UInt16MultiArray authority_msg;
+
+        authority_msg.data = authority_;
+        authority_pub.publish(authority_msg);
+    }
+
     // Update odometry each time
+    void authorityCallback(const std_msgs::UInt16MultiArrayConstPtr& authority_msg) {
+        // Dicards any messages which its own ID appears in it
+        if ( std::binary_search(authority_msg->data.begin(), authority_msg->data.end(), id_) && authority_msg->data.size() > 1 ) {
+            return;
+        }
+
+        // If authority that comming from message is higher than own authority, use it as your authority and append id_ end of it
+        if (compareAuthority(authority_msg->data) == 1) {
+            authority_ = authority_msg->data;
+            authority_.push_back(id_);
+            ROS_ERROR("[%s] %d %d", namespace_.c_str(), *authority_.begin(), *(authority_.end() - 1) );
+        }
+    }
+
     void odometryCallback(const nav_msgs::OdometryConstPtr& odometry_msg) {
         Eigen::Vector3d temp_odom;
         temp_odom(0) = odometry_msg->pose.pose.position.x;
@@ -143,24 +213,7 @@ private:
 
     // Update goal_vector and goal_factor each time
     void goalCallback(const geometry_msgs::PointStampedConstPtr& goal_direction) {
-        Eigen::Vector3d temp_vector;
-
-        // Control if odometry is set
-        if (odometry_.isZero()) {
-            return;
-        }
-
-        // Set goal_vector based on UAV frame
-        temp_vector(0) = (goal_direction->point.x - odometry_.x());
-        temp_vector(1) = (goal_direction->point.y - odometry_.y());
-        temp_vector(2) = (goal_direction->point.z - odometry_.z());
-
-        // Set goal_factor
-        setGoalFactor(temp_vector);        
-
-        // Normalize goal_vector based on uniform distance
-        temp_vector.normalize();
-        goal_vector_ = temp_vector * uniform_distance_;
+        saved_goal_position_ = goal_direction->point;
     }
 
     void detectedStraitsCallback(const vision_msgs::BoundingBox3DArrayConstPtr& detected_straits) {
@@ -175,7 +228,7 @@ private:
         trajectory_msgs::MultiDOFJointTrajectoryPtr trajectory_msg;
 
         // Control if goal_vector_ is set
-        if (goal_vector_.isZero() || odometry_.isZero()) {
+        if (odometry_.isZero()) {
             return;
         }
         if (!active_) {
@@ -183,19 +236,26 @@ private:
         }
 
         // Calculate maintenance, partition, and unification vectors
-        calculateMaintenance(*positions_of_uavs);    
-
-        if (calculatePartition()) {
-            target_vector = maintenance_vector_ + partition_vector_ ;
-        }
-        else {
+        int idx = calculateNextGoal();
+        if (idx < 0) {
+            calculateMaintenance(*positions_of_uavs);    
             calculateUnification(*positions_of_uavs);
             target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
+            
+            // Convert target_vector into target_position related to the world frame
+            trajectory_msg = createTrajectory(target_vector);
+            trajectory_pub.publish(trajectory_msg);
+
+        }
+        else {
+            target_vector(0) = detected_straits_[idx].center.position.x + goal_vector_.x();
+            target_vector(1) = detected_straits_[idx].center.position.y + goal_vector_.y();
+            target_vector(2) = detected_straits_[idx].center.position.z;
+            trajectory_msg = createTrajectory(target_vector);
+            trajectory_pub.publish(trajectory_msg);
+            setGoalVector(saved_goal_position_);
         }
 
-        // Convert target_vector into target_position related to the world frame
-        trajectory_msg = createTrajectory(target_vector);
-        trajectory_pub.publish(trajectory_msg);
     }
 
     
@@ -261,7 +321,7 @@ private:
         setMaintenanceVector(target(0), target(1), target(2));
     }
     
-    bool calculatePartition() {
+    int calculateNextGoal() {
         Eigen::Vector3d fav_vector;
         Eigen::Vector3d max_fav_vector;
         int i, max_idx;
@@ -278,28 +338,29 @@ private:
                         max_fav_vector = fav_vector;
                         max_idx = i;
                     }
-                    else if (fav_vector.norm() == max_fav_vector.norm()) {
-                        double norm_1 = (fav_vector + maintenance_vector_).norm();
-                        double norm_2 = (max_fav_vector + maintenance_vector_).norm();
-                        if (norm_1 > norm_2) {
-                            max_fav_vector = fav_vector;
-                            max_idx = i;
-                        }
-                    }
                 }
             }
+
             if (!max_fav_vector.isZero()) { 
-                setPartitionVector(max_fav_vector, max_idx);
-                detected_straits_.clear();
-                return true;
+                // setPartitionVector(max_fav_vector, max_idx);
+                // Set closest strait as the goal_vector_ 
+                setGoalVector(detected_straits_[max_idx].center.position);
+                
+                if (isReachedGoal(detected_straits_[max_idx].center.position)) {
+                    // setUniformDistance(uniform_distance_ / 2);
+                    
+                    return max_idx; // TODO: buradan sonra edlikten sırayle geçmeyi tammala
+                }
+                else {
+                    detected_straits_.clear();
+                    return -1;
+                }
             }
-            else {
-                return false;
-            }
+            detected_straits_.clear();    
         }
-        else {
-            return false;
-        }
+        uniform_distance_ = 3.0;
+        setGoalVector(saved_goal_position_);
+        return -1;
     }
     
     void calculateUnification(geometry_msgs::PoseArray positions_of_uavs) {
@@ -316,6 +377,29 @@ private:
     
 
     // Other Functions ------------------------------------------------------------------------------------------------------------------------------------------------
+    // Compare authorities and return highest authority
+    int compareAuthority(std::vector<uint16_t> authority){
+        // Compare root IDs
+        if ( *(authority.begin()) > *(authority_.begin()) ) {
+            return 1;
+        }
+
+        // Compare length if root IDs is equal
+        if (authority.size() < authority_.size() && 
+            *(authority.begin()) == *(authority_.begin()) ) {
+            return 1;
+        }
+
+        // Compare last IDs if root IDs equal and sizes equal
+        if (*(authority.end() - 1) > *(authority_.end() - 1) && 
+            authority.size() == authority_.size() && 
+            *(authority.begin()) == *(authority_.begin()) ) {
+            return 1;
+        }
+
+        return 0;
+    }
+    
     // Control if given uav is in the goal area (+90 -90)
     bool inGoalArea(geometry_msgs::Point uav_position) {
         double angle_uav;
@@ -335,6 +419,16 @@ private:
             return true;
         }
         return false;
+    }
+
+    // Control if UAV is close enough to the goal
+    bool isReachedGoal(geometry_msgs::Point goal_position) {
+        if (dist(Eigen::Vector3d::Zero(), goal_position) < uniform_distance_) {
+            return true;
+        }
+        else {
+            return false;
+        }
     }
 
     // Find favorite vecctor into straits for partition
@@ -406,8 +500,8 @@ private:
         return trajectory_msg;
     }
 
+    // Keep UAV always safe altitude
     void controlTarget(Eigen::Vector3d *target_position_w) {
-        // Keep uav safe altitude
         if ((*target_position_w)(2) < SAFE_ALTITUDE) {
             (*target_position_w)(2) = SAFE_ALTITUDE + 0.2;
         }
@@ -429,8 +523,9 @@ int main(int argc, char** argv) {
     ros::init(argc, argv, "prediction_node");
     ros::NodeHandle nh;
     ros::NodeHandle private_nh("~");
+    ros::NodeHandle global_nh("/swarm");
 
-    Prediction prediction_node(nh, private_nh);
+    Prediction prediction_node(nh, private_nh, global_nh);
     ros::spin();
     return 0;
 }
