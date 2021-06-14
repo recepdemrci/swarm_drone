@@ -36,7 +36,6 @@ private:
 
     uint16_t id_;
     bool active_;
-    int pass_flag;
     float goal_factor_;
     float uniform_distance_;
     float unification_factor_;
@@ -91,7 +90,6 @@ public:
 
         // Defination of other variable
         active_ = false;
-        pass_flag = 0;
         id_ = namespace_.back() - '0';
         authority_.push_back(id_);
         goal_vector_ = Eigen::Vector3d::Zero();
@@ -267,22 +265,9 @@ private:
         }
         else {
             ROS_ERROR("test");
-            calculateMaintenance(*positions_of_uavs);
             target_vector = partition_vector_;
             trajectory_msg = createTrajectory(target_vector);
             trajectory_pub.publish(trajectory_msg);
-
-            // Get same altitude with center of strait
-            // position_w = odometry_;
-            // position_w(2) += detected_straits_[strait_idx].center.position.z;
-            // goTo(position_w);
-            
-            // int factor = 0.1 * goal_vector_.x() / abs(goal_vector_.x());
-            // int authority_idx = getIndex(id_);
-            // position_w(0) = odometry_.x() + detected_straits_[strait_idx].center.position.x - (factor * uniform_distance_ * (authority_idx + 1));
-            // position_w(1) = odometry_.y() + detected_straits_[strait_idx].center.position.y - (factor * uniform_distance_ * (authority_idx + 1));
-            // goTo(position_w);
-            // setGoalVector(saved_goal_position_);
         }
 
     }
@@ -350,128 +335,43 @@ private:
         setMaintenanceVector(target(0), target(1), target(2));
     }
     
-    bool calculateNextGoal() {
-        int i, max_idx;
-        int authority_idx, authority_factor;
-        Eigen::Vector3d fav_vector;
-        Eigen::Vector3d max_fav_vector;
-        Eigen::Vector3d target_before_pass;
-        vision_msgs::BoundingBox3D the_strait;
-
-        // If there is no strait and UAV isn't passin throug an strait, set goal_vector as final destination
-        if (detected_straits_.empty() && pass_flag == 0) {
-            setGoalVector(saved_goal_position_);
-            return false;
-        }
-
-        // Find closest strait to the UAV, which is in the goal direction area
-        max_fav_vector.setZero();
-        for (vision_msgs::BoundingBox3D strait : detected_straits_) {
-            fav_vector = findFavVector(strait);
-            if (inGoalArea(strait.center.position) && fav_vector.norm() > max_fav_vector.norm()) {
-                max_fav_vector = fav_vector;
-                the_strait = strait;
-            }
-        }
-        detected_straits_.clear();
-
-        // If there isn't appropriate strait, set goal_vector as final destination
-        if (max_fav_vector.isZero() && pass_flag == 0) {
-            setGoalVector(saved_goal_position_);
-            return false;
-        }
-
+    bool calculateNextGoal() {   
         float temp_factor;
-        switch (pass_flag) {
-            case 0: 
-            // First step for passing through strait, come same altitude and orientation with strait
-                if (isReachedGoal(the_strait.center.position)) {
-                    target_before_pass.setZero();
-                    target_before_pass(2) = the_strait.center.position.z;
-                    partition_vector_ = target_before_pass;
-                    pass_flag ++; 
-                }
-                else {
-                    setGoalVector(the_strait.center.position, false);
-                    return false;
-                }
-                break;
-            case 1:
-                temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), the_strait.center.position);
-                partition_vector_(0) = temp_factor * max_fav_vector(0);
-                partition_vector_(1) = temp_factor * max_fav_vector(1);
-                partition_vector_(2) = the_strait.center.position.z;
-                partition_vector_ += goal_vector_;
-                pass_flag --;
-                break;
-            default:
-                // ros::Duration((double)authority_.size());
-                pass_flag = 0;
-                break;
+        geometry_msgs::Point strait_center_position;
+
+        // If there is no strait then set goal_vector as final destination
+        if (detected_straits_.empty()) {
+            setGoalVector(saved_goal_position_);
+            return false;
         }
+
+        // Choose closest strait if exists. It will return center position of strait. If there is none, return zero 
+        strait_center_position = chooseStrait();
+        if (strait_center_position.x == 0.0 && 
+            strait_center_position.y == 0.0 &&
+            strait_center_position.z == 0.0) {
+
+            setGoalVector(saved_goal_position_);
+            return false;
+        }
+
+        // Set goal_vector as strait position
+        setGoalVector(strait_center_position, false);
+        if( ! isReachedGoal(strait_center_position)) {
+            return false;
+        }
+
+        // Calculate final vector and increase it while closing the strait
+        temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), strait_center_position);
+        if (temp_factor > 10) {
+            temp_factor = 10;
+        }
+        partition_vector_(0) = temp_factor * goal_vector_(0);
+        partition_vector_(1) = temp_factor * goal_vector_(1);
+        // partition_vector_(0) = goal_vector_(0);
+        // partition_vector_(1) = goal_vector_(1);
+        partition_vector_(2) = strait_center_position.z;
         return true;
-
-
-        // // Set goal_vector as the strait position
-        // setGoalVector(the_strait.center.position, false);
-        // if (isReachedGoal(the_strait.center.position)) {
-        //     // setUniformDistance(uniform_distance_ / 2);
-
-            
-        //     authority_idx = getIndex(id_);
-        //     authority_factor = uniform_distance_ * (goal_vector_.x() / abs(goal_vector_.x()));
-        //     target_before_pass.x = odometry_.x() + the_strait.center.position.x - authority_factor * authority_idx;
-        //     target_before_pass.y = odometry_.y();
-        //     pass_flag = 1;
-        //     return;
-        // }
-        // return;
-
-
-
-        // if (!detected_straits_.empty()) {
-            
-        //     i = 0;
-        //     max_fav_vector.setZero();
-        //     for (vision_msgs::BoundingBox3D strait : detected_straits_) {
-        //         // Control if strait is in front of the UAV and close enough
-        //         if (inGoalArea(strait.center.position)) {
-        //             fav_vector = findFavVector(strait);
-        //             if (fav_vector.norm() > max_fav_vector.norm()) {
-        //                 max_fav_vector = fav_vector;
-        //                 max_idx = i;
-        //             }
-        //         }
-        //     }
-
-        //     if (!max_fav_vector.isZero()) { 
-        //         // setPartitionVector(max_fav_vector, max_idx);
-        //         // Set closest strait as the goal_vector_ 
-        //         setGoalVector(detected_straits_[max_idx].center.position);
-                
-        //         if (isReachedGoal(detected_straits_[max_idx].center.position)) {
-        //             setUniformDistance(uniform_distance_ / 2);
-        //             authority_idx = getIndex(id_);
-        //             authority_factor = 2.0 * goal_vector_.x() / abs(goal_vector_.x());
-                    
-        //             target_vector(0) = detected_straits_[max_idx].center.position.x + authority_factor * uniform_distance_;
-        //             target_vector(1) = detected_straits_[max_idx].center.position.y;
-        //             target_vector(2) = detected_straits_[max_idx].center.position.z;
-        //             partition_vector_ = target_vector;
-        //             detected_straits_.clear();
-                    
-        //             return max_idx;
-        //         }
-        //         else {
-        //             detected_straits_.clear();
-        //             return -1;
-        //         }
-        //     }
-        //     detected_straits_.clear();    
-        // }
-        // setGoalVector(saved_goal_position_);
-        // // uniform_distance_ = 3.0;
-        // return -1;
     }
     
     void calculateUnification(geometry_msgs::PoseArray positions_of_uavs) {
@@ -541,6 +441,36 @@ private:
         else {
             return false;
         }
+    }
+
+    // Choose closest strait for passing through
+    geometry_msgs::Point chooseStrait() {
+        Eigen::Vector3d fav_vector;
+        Eigen::Vector3d max_fav_vector;
+        vision_msgs::BoundingBox3D the_strait;
+        geometry_msgs::Point strait_position;
+
+        // Find closest strait to the UAV, which is in the goal direction area
+        max_fav_vector.setZero();
+        for (vision_msgs::BoundingBox3D strait : detected_straits_) {
+            fav_vector = findFavVector(strait);
+            if (inGoalArea(strait.center.position) && fav_vector.norm() > max_fav_vector.norm()) {
+                max_fav_vector = fav_vector;
+                the_strait = strait;
+            }
+        }
+        detected_straits_.clear();
+
+        // Return strait center position if you found the appripriate strait
+        if (!max_fav_vector.isZero()) {
+            strait_position = the_strait.center.position;
+        }
+        else {
+            strait_position.x = 0.0;
+            strait_position.y = 0.0;
+            strait_position.z = 0.0;
+        }
+        return strait_position;
     }
 
     // Find favorite vecctor into straits for partition
@@ -628,14 +558,14 @@ private:
         return result;
     }
 
-    int getIndex(uint16_t item) {
-        auto ref = std::find(authority_.begin(), authority_.end(), item);
+    // int getIndex(uint16_t item) {
+    //     auto ref = std::find(authority_.begin(), authority_.end(), item);
         
-        if (ref != authority_.end()) {
-            return (ref - authority_.begin());
-        }
-        return - 1;
-    }
+    //     if (ref != authority_.end()) {
+    //         return (ref - authority_.begin());
+    //     }
+    //     return - 1;
+    // }
 };
 
 

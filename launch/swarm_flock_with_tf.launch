@@ -4,7 +4,7 @@
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
   <arg name="swarm_size" default="5" />
-  <arg name="goal_x" default="-10.0" />
+  <arg name="goal_x" default="-15.0" />
   <arg name="goal_y" default="6.0" />
   <arg name="goal_z" default="2.0" />
 
