@@ -130,8 +130,8 @@ private:
             temp_box.size.z = 0.5;
             detected_straits.boxes.push_back(temp_box);
 
-            temp_box.center.position.x = transformStamped[0].transform.translation.x - 5.3;
-            temp_box.center.position.y = transformStamped[0].transform.translation.y + 2.5;
+            temp_box.center.position.x = transformStamped[0].transform.translation.x + 1.1;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.1;
             temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
             temp_box.center.orientation.x = 0.0;
             temp_box.center.orientation.y = 0.0;
@@ -140,7 +140,29 @@ private:
             temp_box.size.y = 1.0;
             temp_box.size.z = 0.5;
             detected_straits.boxes.push_back(temp_box);
-            // }
+
+
+            temp_box.center.position.x = transformStamped[0].transform.translation.x - 6.0;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y + 4.0;
+            temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
+            temp_box.center.orientation.x = 0.0;
+            temp_box.center.orientation.y = 0.0;
+            temp_box.center.orientation.z = 0.0;
+            temp_box.size.x = 0.0;
+            temp_box.size.y = 1.0;
+            temp_box.size.z = 0.5;
+            detected_straits.boxes.push_back(temp_box);
+
+            temp_box.center.position.x = transformStamped[0].transform.translation.x - 6.0;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.0;
+            temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
+            temp_box.center.orientation.x = 0.0;
+            temp_box.center.orientation.y = 0.0;
+            temp_box.center.orientation.z = 0.0;
+            temp_box.size.x = 0.0;
+            temp_box.size.y = 1.0;
+            temp_box.size.z = 0.5;
+            detected_straits.boxes.push_back(temp_box);
             detected_straits_pub.publish(detected_straits);
         }
         catch (tf2::TransformException &ex) {

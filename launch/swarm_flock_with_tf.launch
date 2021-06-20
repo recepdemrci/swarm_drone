@@ -4,8 +4,8 @@
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
   <arg name="swarm_size" default="5" />
-  <arg name="goal_x" default="-15.0" />
-  <arg name="goal_y" default="6.0" />
+  <arg name="goal_x" default="-14.0" />
+  <arg name="goal_y" default="2.0" />
   <arg name="goal_z" default="2.0" />
 
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>

@@ -15,9 +15,10 @@
 #define MIN_DIST 100000                                     // Enormous distance for calculate min distance between two UAV
 #define SAFE_ALTITUDE 0.5                                   // Safe altitude for each UAV (UAVs can't be below this altitude)
 #define UNIT_NUMBER 4                                       // Divide trajectory UNIT_NUMBER value parts to prevent big movement(unit_distance 2, UNIT_NUMBER 4)
+#define MAX_PARTITION_FACTOR 4                              // While passing throug an strait, max factor for velocity 
 static const int64_t kNanoSecondsInSecond = 1000000000;
 
-
+// TODO: when we come really close to an object or UAV, add vector in opposite direction
 class Prediction {
 private:
     ros::NodeHandle nh_;
@@ -46,6 +47,7 @@ private:
     Eigen::Vector3d maintenance_vector_;
     Eigen::Vector3d unification_vector_;
     Eigen::Vector3d partition_vector_;
+    Eigen::Vector3d avoid_vector_;
     geometry_msgs::Point saved_goal_position_;
     std::vector<vision_msgs::BoundingBox3D> detected_straits_;
     
@@ -173,6 +175,18 @@ private:
         maintenance_vector_ = temp_vector;
     }
 
+    // Set partition_vector
+    void setPartitionVector(geometry_msgs::Point strait_position) {
+        float temp_factor;
+
+        temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), strait_position);
+        if (temp_factor > MAX_PARTITION_FACTOR) {
+            temp_factor = MAX_PARTITION_FACTOR;
+        }
+        partition_vector_ = temp_factor * goal_vector_;
+        partition_vector_(2) = strait_position.z;
+    }
+
     void takeoff(float altitude) {
         float desired_yaw = 0.0;
         Eigen::Vector3d desired_position(odometry_.x(), odometry_.y(), altitude);
@@ -182,16 +196,6 @@ private:
         mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(desired_position, desired_yaw, &trajectory_msg);
         trajectory_pub.publish(trajectory_msg);
         ros::Duration(2.0).sleep();
-    }
-
-    void goTo(Eigen::Vector3d position_w, float desired_yaw = 0.0) {
-        trajectory_msgs::MultiDOFJointTrajectory trajectory_msg;
-
-        trajectory_msg.header.stamp = ros::Time::now();
-        mav_msgs::msgMultiDofJointTrajectoryFromPositionYaw(position_w, desired_yaw, &trajectory_msg);
-        ROS_ERROR("[%s] %f %f %f", namespace_.c_str(), position_w.x(), position_w.y(), position_w.z());
-        trajectory_pub.publish(trajectory_msg);
-        ros::Duration(3.0).sleep();
     }
 
     // Calback Functions ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -234,8 +238,7 @@ private:
         detected_straits_ = detected_straits->boxes;      
     }
 
-
-    // TODO: Control if UAV did not detect any other UAVs
+    
     // Calculate target_position of UAV itself based on world frame each time other UAVs detected
     void positionOfDetectedUAVsCallback(const geometry_msgs::PoseArrayConstPtr& positions_of_uavs) {
         Eigen::Vector3d target_vector;
@@ -252,24 +255,19 @@ private:
         }
 
         // Calculate maintenance, partition, and unification vectors
-        
-        if (!calculateNextGoal()) {
+        calculateAvoidVector(*positions_of_uavs);
+        if (!calculatePartition()) {
             calculateMaintenance(*positions_of_uavs);    
             calculateUnification(*positions_of_uavs);
-            target_vector = maintenance_vector_ + unification_vector_ * unification_factor_;
-            
-            // Convert target_vector into target_position related to the world frame
-            trajectory_msg = createTrajectory(target_vector);
-            trajectory_pub.publish(trajectory_msg);
-
+            target_vector = maintenance_vector_ + (unification_vector_ * unification_factor_) + avoid_vector_;
         }
         else {
-            ROS_ERROR("test");
-            target_vector = partition_vector_;
-            trajectory_msg = createTrajectory(target_vector);
-            trajectory_pub.publish(trajectory_msg);
+            target_vector = partition_vector_ + avoid_vector_;
         }
 
+        // Convert target_vector into target_position related to the world frame
+            trajectory_msg = createTrajectory(target_vector);
+            trajectory_pub.publish(trajectory_msg);
     }
 
     
@@ -283,6 +281,13 @@ private:
         Eigen::Vector3d neighbor_2;
         Eigen::Vector3d center_position;
         Eigen::Vector3d current_position;
+
+
+        // Control if UAV detected 2 or more UAVs
+        if (positions_of_uavs.poses.size() < 2){
+            setMaintenanceVector(0.0, 0.0, 0.0);
+            return;
+        }
 
         // Find 1st neighbour
         current_position = Eigen::Vector3d::Zero();
@@ -335,45 +340,6 @@ private:
         setMaintenanceVector(target(0), target(1), target(2));
     }
     
-    bool calculateNextGoal() {   
-        float temp_factor;
-        geometry_msgs::Point strait_center_position;
-
-        // If there is no strait then set goal_vector as final destination
-        if (detected_straits_.empty()) {
-            setGoalVector(saved_goal_position_);
-            return false;
-        }
-
-        // Choose closest strait if exists. It will return center position of strait. If there is none, return zero 
-        strait_center_position = chooseStrait();
-        if (strait_center_position.x == 0.0 && 
-            strait_center_position.y == 0.0 &&
-            strait_center_position.z == 0.0) {
-
-            setGoalVector(saved_goal_position_);
-            return false;
-        }
-
-        // Set goal_vector as strait position
-        setGoalVector(strait_center_position, false);
-        if( ! isReachedGoal(strait_center_position)) {
-            return false;
-        }
-
-        // Calculate final vector and increase it while closing the strait
-        temp_factor = uniform_distance_ / dist(Eigen::Vector3d::Zero(), strait_center_position);
-        if (temp_factor > 10) {
-            temp_factor = 10;
-        }
-        partition_vector_(0) = temp_factor * goal_vector_(0);
-        partition_vector_(1) = temp_factor * goal_vector_(1);
-        // partition_vector_(0) = goal_vector_(0);
-        // partition_vector_(1) = goal_vector_(1);
-        partition_vector_(2) = strait_center_position.z;
-        return true;
-    }
-    
     void calculateUnification(geometry_msgs::PoseArray positions_of_uavs) {
         for (geometry_msgs::Pose uav_pose : positions_of_uavs.poses) {
             center_point_(0) += uav_pose.position.x;
@@ -385,7 +351,65 @@ private:
         center_point_(2) /= (positions_of_uavs.poses.size() + 1);
         unification_vector_ = goal_vector_ * goal_factor_ + center_point_;
     }
+
+    bool calculatePartition() {   
+        float temp_factor;
+        geometry_msgs::Point strait_center_position;
+        vision_msgs::BoundingBox3D the_strait;
+
+        // Set goal vector as final destination
+        setGoalVector(saved_goal_position_);
+        // If there is no strait then return false
+        if (detected_straits_.empty()) {
+            return false;
+        }
+        // If UAV just passed the strait, then move to final_destination with same velocity
+        if (isJustPassedStrait()) {
+            setPartitionVector(the_strait.center.position);
+            return true;
+        }
+
+        // Choose closest strait if exists. It will return center position of strait. If there is none, return zero 
+        the_strait = chooseStrait();
+        if (the_strait.center.position.x == 0.0 && 
+            the_strait.center.position.y == 0.0 &&
+            the_strait.center.position.z == 0.0) {
+            return false;
+        }
+
+        // TODO: If you want to move throgh final distance when stait is not close enough, call setGoalVector(strait_center_position) inside if clause
+        // Set goal_vector as strait position
+        setGoalVector(the_strait.center.position, false);
+        // If close enough to strait, calculate final vector and increase it while closing the strait
+        if(isCloseToStrait(the_strait.center.position)) {
+            ROS_ERROR("[%s] : Passing in strait", namespace_.c_str());
+            setPartitionVector(the_strait.center.position);
+            return true;
+        }
+        return false;
+
+    }
     
+    void calculateAvoidVector(geometry_msgs::PoseArray positions_of_uavs) {
+        float r;
+        float m = 0.2;
+        float s = uniform_distance_ / 2;
+        float avoid_vector_magnitude;
+        
+        avoid_vector_.setZero();
+        for (geometry_msgs::Pose uav_pose : positions_of_uavs.poses) {
+            r = dist(Eigen::Vector3d::Zero(), uav_pose.position);
+            if (r <= m) {
+                avoid_vector_magnitude = -1000.0;
+            } else if (m < r && r <= s) {
+                avoid_vector_magnitude = -10 * abs((s - r) / (s - m));
+            } else {
+                avoid_vector_magnitude = 0.0;
+            }
+            avoid_vector_(0) += uav_pose.position.x * avoid_vector_magnitude;
+            avoid_vector_(1) += uav_pose.position.y * avoid_vector_magnitude;
+        }
+    }
 
     // Other Functions ------------------------------------------------------------------------------------------------------------------------------------------------
     // Compare authorities and return highest authority
@@ -433,7 +457,7 @@ private:
     }
 
     // Control if UAV is close enough to the goal
-    bool isReachedGoal(geometry_msgs::Point goal_position) {
+    bool isCloseToStrait(geometry_msgs::Point goal_position) {
         // if (dist(Eigen::Vector3d::Zero(), goal_position) < 1.0) {
         if (dist(Eigen::Vector3d::Zero(), goal_position) < uniform_distance_) {
             return true;
@@ -443,12 +467,35 @@ private:
         }
     }
 
-    // Choose closest strait for passing through
-    geometry_msgs::Point chooseStrait() {
+    // Control if UAV just passed the strait
+    bool isJustPassedStrait() {
         Eigen::Vector3d fav_vector;
         Eigen::Vector3d max_fav_vector;
         vision_msgs::BoundingBox3D the_strait;
-        geometry_msgs::Point strait_position;
+
+        // Find closest strait to the UAV
+        max_fav_vector.setZero();
+        for (vision_msgs::BoundingBox3D strait : detected_straits_) {
+            fav_vector = findFavVector(strait);
+            if (fav_vector.norm() > max_fav_vector.norm()) {
+                max_fav_vector = fav_vector;
+                the_strait = strait;
+            }
+        }
+
+        // If closest strait is not in the goal_area, then it is the strait which we passed. 
+        if (! inGoalArea(the_strait.center.position) && dist(Eigen::Vector3d::Zero(), the_strait.center.position) < 0.5 * uniform_distance_) {
+            ROS_ERROR("[%s] Just Passed", namespace_.c_str());
+            return true;
+        }
+        return false;
+    }
+
+    // Choose closest strait for passing through
+    vision_msgs::BoundingBox3D chooseStrait() {
+        Eigen::Vector3d fav_vector;
+        Eigen::Vector3d max_fav_vector;
+        vision_msgs::BoundingBox3D the_strait;
 
         // Find closest strait to the UAV, which is in the goal direction area
         max_fav_vector.setZero();
@@ -463,14 +510,14 @@ private:
 
         // Return strait center position if you found the appripriate strait
         if (!max_fav_vector.isZero()) {
-            strait_position = the_strait.center.position;
+            return the_strait;
         }
         else {
-            strait_position.x = 0.0;
-            strait_position.y = 0.0;
-            strait_position.z = 0.0;
+            the_strait.center.position.x = 0.0;
+            the_strait.center.position.y = 0.0;
+            the_strait.center.position.z = 0.0;
         }
-        return strait_position;
+        return the_strait;
     }
 
     // Find favorite vecctor into straits for partition
