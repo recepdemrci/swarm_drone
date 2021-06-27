@@ -3,10 +3,15 @@
   <arg name="world_name" default="rubble"/>
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
+  
   <arg name="swarm_size" default="5" />
   <arg name="goal_x" default="-14.0" />
   <arg name="goal_y" default="2.0" />
   <arg name="goal_z" default="2.0" />
+  <arg name="leader_selection" default="true" />
+  <arg name="uniform_distance" default="3.0" />
+  <arg name="unification_factor" default="0.14" />
+
 
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
@@ -40,7 +45,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>    
@@ -64,7 +73,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>    
@@ -88,7 +101,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>
@@ -112,7 +129,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>    
@@ -128,15 +149,19 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_4"/>
-      <arg name="x" value="11.0"/>
-      <arg name="y" value="0.0"/>
+      <arg name="x" value="9.0"/>
+      <arg name="y" value="2.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
       <rosparam command="load" file="$(find rotors_gazebo)/resource/lee_controller_$(arg mav_name).yaml" />
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>    
@@ -160,7 +185,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>  
@@ -184,7 +213,11 @@
       <rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
       <remap from="odometry" to="odometry_sensor1/odometry" />
     </node>
-    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
+    <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
+      <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
+      <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
+      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
+    </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
     </node>  

@@ -39,9 +39,12 @@ private:
 
     uint16_t id_;
     bool active_;
+    bool crashed_;
+    bool leader_selection_;
     float goal_factor_;
     float uniform_distance_;
     float unification_factor_;
+    int authority_expire_time;
     std::vector<uint16_t> authority_;
     Eigen::Vector3d odometry_;
     Eigen::Vector3d goal_vector_;
@@ -98,8 +101,10 @@ public:
 
         // Defination of other variable
         active_ = false;
+        crashed_ = false;
         id_ = namespace_.back() - '0';
         authority_.push_back(id_);
+        authority_expire_time = 10;
         goal_vector_ = Eigen::Vector3d::Zero();
         maintenance_vector_ = Eigen::Vector3d::Zero();
         unification_vector_ = Eigen::Vector3d::Zero();
@@ -111,6 +116,7 @@ private:
     // Setter/Getter Functions ------------------------------------------------------------------------------------------------------------------------------------------
     // Initialize node parameters
     void initParameters() {
+        private_nh_.param<bool>("leader_selection", leader_selection_, false);
         private_nh_.param<float>("uniform_distance", uniform_distance_, 3.0);
         private_nh_.param<float>("unification_factor", unification_factor_, 0.14);
     }
@@ -208,22 +214,39 @@ private:
     // Every second call this function as heartbeat
     void heartbeatCallback(const ros::TimerEvent& event) {
         std_msgs::UInt16MultiArray authority_msg;
+        if (!leader_selection_) {
+            return;
+        }
 
-        authority_msg.data = authority_;
-        authority_pub.publish(authority_msg);
+        if (crashed_) {
+            authority_ = std::vector<uint16_t>();
+            authority_.push_back(id_);
+        }
+        else {
+            authority_expire_time -= 1;
+            if (authority_expire_time < 0) {
+                authority_expire_time = 10;
+                authority_ = std::vector<uint16_t>();
+                authority_.push_back(id_);
+            }
+
+            authority_msg.data = authority_;
+            authority_pub.publish(authority_msg);
+        }
     }
 
     // Update odometry each time
     void authorityCallback(const std_msgs::UInt16MultiArrayConstPtr& authority_msg) {
         // Dicards any messages which its own ID appears in it
-        if ( std::binary_search(authority_msg->data.begin(), authority_msg->data.end(), id_) && authority_msg->data.size() > 1 ) {
+        if (std::find(authority_msg->data.begin(), authority_msg->data.end(), id_) != authority_msg->data.end() && authority_msg->data.size() > 1 ) {
             return;
         }
 
         // If authority that comming from message is higher than own authority, use it as your authority and append id_ end of it
         if (compareAuthority(authority_msg->data) == 1) {
-            authority_ = authority_msg->data;
-            authority_.push_back(id_);
+            std::vector<uint16_t> temp_authority = authority_msg->data; 
+            temp_authority.push_back(id_);
+            authority_ = temp_authority;
         }
     }
 
@@ -233,11 +256,18 @@ private:
         temp_odom(1) = odometry_msg->pose.pose.position.y;
         temp_odom(2) = odometry_msg->pose.pose.position.z;
         odometry_ = temp_odom;
+        
+        if (odometry_.z() < 0.1) {
+            crashed_ = true;
+        }
+        else {
+            crashed_ = false;
+        }
     }
 
     // Update goal_vector and goal_factor each time
     void goalCallback(const geometry_msgs::PointStampedConstPtr& goal_direction) {
-        if (authority_.size() > 1) {
+        if (leader_selection_ && authority_.at(0) != id_) {
             saved_goal_position_ = goal_direction->point;
         }
     }
@@ -245,7 +275,12 @@ private:
     void goalMainCallback(const geometry_msgs::PointStampedConstPtr& goal_direction_main) {
         geometry_msgs::PointStamped goal_direction;
 
-        if (authority_.size() == 1 && !odometry_.isZero()) {
+        if (!leader_selection_) {
+            saved_goal_position_ = goal_direction_main->point;
+            return;
+        }
+
+        if (authority_.at(0) == id_ && !crashed_) {
             saved_goal_position_ = goal_direction_main->point;
             
             goal_direction.header.stamp = ros::Time::now();
@@ -401,10 +436,9 @@ private:
 
         // TODO: If you want to move throgh final distance when stait is not close enough, call setGoalVector(strait_center_position) inside if clause
         // Set goal_vector as strait position
-        setGoalVector(the_strait.center.position, false);
         // If close enough to strait, calculate final vector and increase it while closing the strait
         if(isCloseToStrait(the_strait.center.position)) {
-            ROS_ERROR("[%s] : Passing in strait", namespace_.c_str());
+            setGoalVector(the_strait.center.position, false);
             setPartitionVector(the_strait.center.position);
             return true;
         }
@@ -428,9 +462,9 @@ private:
         for (geometry_msgs::Pose uav_pose : positions_of_uavs.poses) {
             r = dist(Eigen::Vector3d::Zero(), uav_pose.position);
             if (r <= m) {
-                avoid_vector_magnitude = -10 * uniform_distance_;
+                avoid_vector_magnitude = -15 * uniform_distance_;
             } else if (m < r && r <= s) {
-                avoid_vector_magnitude = -2 * uniform_distance_ * abs((s - r) / (s - m));
+                avoid_vector_magnitude = -3 * uniform_distance_ * abs((s - r) / (s - m));
             } else {
                 avoid_vector_magnitude = 0.0;
             }
@@ -443,20 +477,19 @@ private:
     // Compare authorities and return highest authority
     int compareAuthority(std::vector<uint16_t> authority){
         // Compare root IDs
-        if ( *(authority.begin()) > *(authority_.begin()) ) {
+        if (authority.at(0) > authority_.at(0)) {
             return 1;
         }
 
         // Compare length if root IDs is equal
-        if (authority.size() < authority_.size() && 
-            *(authority.begin()) == *(authority_.begin()) ) {
+        if (authority.at(0) == authority_.at(0) && authority.size() < authority_.size()-1) {
             return 1;
         }
 
         // Compare last IDs if root IDs equal and sizes equal
-        if (*(authority.end() - 1) > *(authority_.end() - 1) && 
-            authority.size() == authority_.size() && 
-            *(authority.begin()) == *(authority_.begin()) ) {
+        if (authority.at(0) == authority_.at(0) &&
+            authority.size() == authority_.size()-1 &&
+            authority.at(authority.size() - 1) > authority_.at(authority_.size() - 2)) {
             return 1;
         }
 
@@ -487,7 +520,7 @@ private:
     // Control if UAV is close enough to the goal
     bool isCloseToStrait(geometry_msgs::Point goal_position) {
         // if (dist(Eigen::Vector3d::Zero(), goal_position) < 1.0) {
-        if (dist(Eigen::Vector3d::Zero(), goal_position) < uniform_distance_) {
+        if (dist(Eigen::Vector3d::Zero(), goal_position) < 2 * uniform_distance_) {
             return true;
         }
         else {
@@ -513,7 +546,6 @@ private:
 
         // If closest strait is not in the goal_area, then it is the strait which we passed. 
         if (! inGoalArea(the_strait.center.position) && dist(Eigen::Vector3d::Zero(), the_strait.center.position) < 0.5 * uniform_distance_) {
-            ROS_ERROR("[%s] Just Passed", namespace_.c_str());
             return true;
         }
         return false;
