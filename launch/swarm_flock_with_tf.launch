@@ -17,7 +17,13 @@
     <!-- <arg name="gui" value="false"/> -->
     <!-- <arg name="verbose" value="true"/> -->
   </include>
- 
+
+  <node name="control_node" pkg="swarm_drone" type="control_node" output="screen">
+      <param name="goal_x" type="double" value="$(arg goal_x)" />
+      <param name="goal_y" type="double" value="$(arg goal_y)" />
+      <param name="goal_z" type="double" value="$(arg goal_z)" />
+  </node>
+
   <group ns="$(arg mav_name)_0">
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
@@ -37,9 +43,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>    
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -64,9 +67,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>    
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -91,9 +91,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -118,9 +115,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>    
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -134,8 +128,8 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_4"/>
-      <arg name="x" value="9.0"/>
-      <arg name="y" value="2.0"/>
+      <arg name="x" value="11.0"/>
+      <arg name="y" value="0.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
       <rosparam command="load" file="$(find rotors_gazebo)/resource/lee_controller_$(arg mav_name).yaml" />
@@ -145,9 +139,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>    
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -161,7 +152,7 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_5"/>
-      <arg name="x" value="0.0"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="-4.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
@@ -172,9 +163,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>  
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
@@ -188,8 +176,8 @@
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_6"/>
+      <arg name="x" value="9.0"/>
       <arg name="y" value="4.0"/>
-      <arg name="x" value="0.0"/>
     </include>
     <node name="lee_position_controller_node" pkg="rotors_control" type="lee_position_controller_node" output="screen">
       <rosparam command="load" file="$(find rotors_gazebo)/resource/lee_controller_$(arg mav_name).yaml" />
@@ -199,9 +187,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" />
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
-      <param name="goal_x" type="double" value="$(arg goal_x)" />
-      <param name="goal_y" type="double" value="$(arg goal_y)" />
-      <param name="goal_z" type="double" value="$(arg goal_z)" />
     </node>  
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />

@@ -15,7 +15,7 @@
 #define MIN_DIST 100000                                     // Enormous distance for calculate min distance between two UAV
 #define SAFE_ALTITUDE 0.5                                   // Safe altitude for each UAV (UAVs can't be below this altitude)
 #define UNIT_NUMBER 4                                       // Divide trajectory UNIT_NUMBER value parts to prevent big movement(unit_distance 2, UNIT_NUMBER 4)
-#define MAX_PARTITION_FACTOR 4                              // While passing throug an strait, max factor for velocity 
+#define MAX_PARTITION_FACTOR 5                              // While passing throug an strait, max factor for velocity 
 static const int64_t kNanoSecondsInSecond = 1000000000;
 
 // TODO: when we come really close to an object or UAV, add vector in opposite direction
@@ -29,9 +29,11 @@ private:
     ros::Timer heartbeat;
     ros::Publisher trajectory_pub;
     ros::Publisher authority_pub;
+    ros::Publisher goal_direction_pub;
     ros::Subscriber authority_sub;
     ros::Subscriber odometry_sub;
     ros::Subscriber goal_direction_sub;
+    ros::Subscriber goal_direction_main_sub;
     ros::Subscriber detected_straits_sub;
     ros::Subscriber positions_of_detected_uavs_sub;
 
@@ -49,12 +51,11 @@ private:
     Eigen::Vector3d partition_vector_;
     Eigen::Vector3d avoid_vector_;
     geometry_msgs::Point saved_goal_position_;
-    std::vector<vision_msgs::BoundingBox3D> detected_straits_;
-    
+    std::vector<vision_msgs::BoundingBox3D> detected_straits_;    
 
 
 public:
-        Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh, const ros::NodeHandle& global_nh) {
+    Prediction(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh, const ros::NodeHandle& global_nh) {
         // Definition of ros nodehandler
         nh_ = nh;
         private_nh_ = private_nh;
@@ -70,9 +71,12 @@ public:
         odometry_sub = nh_.subscribe(
             "ground_truth/odometry", 1,
             &Prediction::odometryCallback, this);
-        goal_direction_sub = nh_.subscribe(
+        goal_direction_sub = global_nh_.subscribe(
             "goal_direction", 1, 
             &Prediction::goalCallback, this);
+        goal_direction_main_sub = global_nh_.subscribe(
+            "goal_direction_main", 1, 
+            &Prediction::goalMainCallback, this);
         positions_of_detected_uavs_sub = nh_.subscribe(
             "detected_uavs_positions", 1, 
             &Prediction::positionOfDetectedUAVsCallback, this);
@@ -87,7 +91,9 @@ public:
         trajectory_pub = nh_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
             mav_msgs::default_topics::COMMAND_TRAJECTORY, 10);
         authority_pub = global_nh_.advertise<std_msgs::UInt16MultiArray>(
-            "authority", 10);   
+            "authority", 10);
+        goal_direction_pub = global_nh_.advertise<geometry_msgs::PointStamped>(
+            "goal_direction", 10);      
 
 
         // Defination of other variable
@@ -231,14 +237,30 @@ private:
 
     // Update goal_vector and goal_factor each time
     void goalCallback(const geometry_msgs::PointStampedConstPtr& goal_direction) {
-        saved_goal_position_ = goal_direction->point;
+        if (authority_.size() > 1) {
+            saved_goal_position_ = goal_direction->point;
+        }
+    }
+
+    void goalMainCallback(const geometry_msgs::PointStampedConstPtr& goal_direction_main) {
+        geometry_msgs::PointStamped goal_direction;
+
+        if (authority_.size() == 1 && !odometry_.isZero()) {
+            saved_goal_position_ = goal_direction_main->point;
+            
+            goal_direction.header.stamp = ros::Time::now();
+            goal_direction.header.frame_id = "world";
+            goal_direction.point.x = odometry_.x();
+            goal_direction.point.y = odometry_.y();
+            goal_direction.point.z = odometry_.z();
+            goal_direction_pub.publish(goal_direction);
+        }
     }
 
     void detectedStraitsCallback(const vision_msgs::BoundingBox3DArrayConstPtr& detected_straits) {
         detected_straits_ = detected_straits->boxes;      
     }
-
-    
+  
     // Calculate target_position of UAV itself based on world frame each time other UAVs detected
     void positionOfDetectedUAVsCallback(const geometry_msgs::PoseArrayConstPtr& positions_of_uavs) {
         Eigen::Vector3d target_vector;
@@ -304,7 +326,7 @@ private:
                 }
             }
         }
-        if (!found) {
+        if (!found || authority_.size() == 1) {
             neighbor_1.array() = goal_vector_.array();
         }
         // Find 2st neighbour
@@ -363,17 +385,17 @@ private:
         if (detected_straits_.empty()) {
             return false;
         }
-        // If UAV just passed the strait, then move to final_destination with same velocity
-        if (isJustPassedStrait()) {
-            setPartitionVector(the_strait.center.position);
-            return true;
-        }
 
         // Choose closest strait if exists. It will return center position of strait. If there is none, return zero 
         the_strait = chooseStrait();
         if (the_strait.center.position.x == 0.0 && 
             the_strait.center.position.y == 0.0 &&
             the_strait.center.position.z == 0.0) {
+    
+            if (isJustPassedStrait()) {
+                setPartitionVector(the_strait.center.position);
+                return true;
+            }
             return false;
         }
 
@@ -386,8 +408,12 @@ private:
             setPartitionVector(the_strait.center.position);
             return true;
         }
+        
+        if (isJustPassedStrait()) {
+            setPartitionVector(the_strait.center.position);
+            return true;
+        }
         return false;
-
     }
     
     void calculateAvoidVector(geometry_msgs::PoseArray positions_of_uavs) {
@@ -395,14 +421,16 @@ private:
         float m = 0.2;
         float s = uniform_distance_ / 2;
         float avoid_vector_magnitude;
-        
+        float object_r;
         avoid_vector_.setZero();
+        
+        // Avoid from detected UAVs
         for (geometry_msgs::Pose uav_pose : positions_of_uavs.poses) {
             r = dist(Eigen::Vector3d::Zero(), uav_pose.position);
             if (r <= m) {
-                avoid_vector_magnitude = -1000.0;
+                avoid_vector_magnitude = -10 * uniform_distance_;
             } else if (m < r && r <= s) {
-                avoid_vector_magnitude = -10 * abs((s - r) / (s - m));
+                avoid_vector_magnitude = -2 * uniform_distance_ * abs((s - r) / (s - m));
             } else {
                 avoid_vector_magnitude = 0.0;
             }
@@ -506,7 +534,6 @@ private:
                 the_strait = strait;
             }
         }
-        detected_straits_.clear();
 
         // Return strait center position if you found the appripriate strait
         if (!max_fav_vector.isZero()) {
