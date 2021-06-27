@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   message_filters
+  vision_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -114,6 +115,7 @@ catkin_package(
     roscpp
     sensor_msgs
     message_filters
+    vision_msgs
 )
 
 ###########
@@ -132,6 +134,10 @@ add_dependencies(prediction_node ${catkin_EXPORTED_TARGETS})
 add_executable(perception_node src/perception_node.cpp)
 target_link_libraries(perception_node ${catkin_LIBRARIES})
 add_dependencies(perception_node ${catkin_EXPORTED_TARGETS})
+
+add_executable(control_node src/control_node.cpp)
+target_link_libraries(control_node ${catkin_LIBRARIES})
+add_dependencies(control_node ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
