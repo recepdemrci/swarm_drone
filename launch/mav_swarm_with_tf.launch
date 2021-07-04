@@ -1,26 +1,25 @@
 <launch>
   <arg name="mav_name" default="iris"/>
-  <arg name="world_name" default="rubble"/>
+  <arg name="world_name" default="straits"/>
   <arg name="enable_logging" default="false" />
   <arg name="enable_ground_truth" default="true" />
+  <arg name="model" default="mav_with_rgbd_sensor" />
+  <!-- <arg name="model" default="mav_generic_odometry_sensor" /> -->
+  <!-- <arg name="model" default="mav_generic_noisy_odometry_sensor" /> -->
   
   <arg name="swarm_size" default="5" />
-  <arg name="goal_x" default="-14.0" />
+  <arg name="goal_x" default="-17.0" />
   <arg name="goal_y" default="2.0" />
   <arg name="goal_z" default="2.0" />
-  <arg name="leader_selection" default="true" />
+  <arg name="leader_selection" default="false" />
   <arg name="uniform_distance" default="3.0" />
-  <arg name="unification_factor" default="0.14" />
 
 
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find rotors_gazebo)/worlds/$(arg world_name).world" />
-    <!-- <arg name="debug" value="true"/> -->
     <arg name="paused" value="false"/>
-    <!-- <arg name="gui" value="false"/> -->
-    <!-- <arg name="verbose" value="true"/> -->
   </include>
 
   <node name="control_node" pkg="swarm_drone" type="control_node" output="screen">
@@ -33,7 +32,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_0" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_0"/>
@@ -48,7 +47,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen" >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -61,7 +59,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_1" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_1"/>
@@ -76,7 +74,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -89,7 +86,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_2" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_2"/>
@@ -104,7 +101,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -117,7 +113,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_3" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_3"/>
@@ -132,7 +128,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -145,7 +140,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_4" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_4"/>
@@ -160,7 +155,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -173,7 +167,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_5" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_5"/>
@@ -188,7 +182,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />
@@ -201,7 +194,7 @@
     <include file="$(find rotors_gazebo)/launch/spawn_mav.launch">
       <arg name="mav_name" value="$(arg mav_name)" />
       <arg name="namespace" value="$(arg mav_name)_6" />
-      <arg name="model" value="$(find rotors_description)/urdf/mav_with_rgbd_sensor.gazebo" />
+      <arg name="model" value="$(find rotors_description)/urdf/$(arg model).gazebo" />    
       <arg name="enable_logging" value="$(arg enable_logging)" />
       <arg name="enable_ground_truth" value="$(arg enable_ground_truth)" />
       <arg name="log_file" value="$(arg mav_name)_6"/>
@@ -216,7 +209,6 @@
     <node name="prediction_node" pkg="swarm_drone" type="prediction_node" output="screen"  >
       <param name="leader_selection" type="bool" value="$(arg leader_selection)" />
       <param name="uniform_distance" type="double" value="$(arg uniform_distance)" />
-      <param name="unification_factor" type="double" value="$(arg unification_factor)" />
     </node>
     <node name="perception_node" pkg="swarm_drone" type="perception_node" output="screen" >
       <param name="swarm_size" type="int" value="$(arg swarm_size)" />

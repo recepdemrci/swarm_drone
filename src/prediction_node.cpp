@@ -18,7 +18,8 @@
 #define MAX_PARTITION_FACTOR 5                              // While passing throug an strait, max factor for velocity 
 static const int64_t kNanoSecondsInSecond = 1000000000;
 
-// TODO: when we come really close to an object or UAV, add vector in opposite direction
+
+// Prediction for movement of the UAV
 class Prediction {
 private:
     ros::NodeHandle nh_;
@@ -265,13 +266,14 @@ private:
         }
     }
 
-    // Update goal_vector and goal_factor each time
+    // Update goal_vector and goal_factor each time (This one is only for follower)
     void goalCallback(const geometry_msgs::PointStampedConstPtr& goal_direction) {
         if (leader_selection_ && authority_.at(0) != id_) {
             saved_goal_position_ = goal_direction->point;
         }
     }
-
+    
+    // Update goal_vector and goal_factor each time (This one is only for leader)
     void goalMainCallback(const geometry_msgs::PointStampedConstPtr& goal_direction_main) {
         geometry_msgs::PointStamped goal_direction;
 
@@ -292,6 +294,7 @@ private:
         }
     }
 
+    // Callback for detecting straits
     void detectedStraitsCallback(const vision_msgs::BoundingBox3DArrayConstPtr& detected_straits) {
         detected_straits_ = detected_straits->boxes;      
     }
@@ -434,9 +437,8 @@ private:
             return false;
         }
 
-        // TODO: If you want to move throgh final distance when stait is not close enough, call setGoalVector(strait_center_position) inside if clause
-        // Set goal_vector as strait position
         // If close enough to strait, calculate final vector and increase it while closing the strait
+        // Set goal_vector as strait position
         if(isCloseToStrait(the_strait.center.position)) {
             setGoalVector(the_strait.center.position, false);
             setPartitionVector(the_strait.center.position);
@@ -464,7 +466,7 @@ private:
             if (r <= m) {
                 avoid_vector_magnitude = -15 * uniform_distance_;
             } else if (m < r && r <= s) {
-                avoid_vector_magnitude = -3 * uniform_distance_ * abs((s - r) / (s - m));
+                avoid_vector_magnitude = -2 * uniform_distance_ * abs((s - r) / (s - m));
             } else {
                 avoid_vector_magnitude = 0.0;
             }
@@ -472,6 +474,7 @@ private:
             avoid_vector_(1) += uav_pose.position.y * avoid_vector_magnitude;
         }
     }
+
 
     // Other Functions ------------------------------------------------------------------------------------------------------------------------------------------------
     // Compare authorities and return highest authority
@@ -622,7 +625,7 @@ private:
         
         // Initialize unit_number based on uniform_distance
         // unit_number = UNIT_NUMBER;
-        unit_number = uniform_distance_ *2;
+        unit_number = uniform_distance_ * 2;
         
         // Initialize trajectory_msg 
         trajectory_msg->header.stamp = ros::Time::now();
@@ -663,15 +666,6 @@ private:
         result = sqrt(result);
         return result;
     }
-
-    // int getIndex(uint16_t item) {
-    //     auto ref = std::find(authority_.begin(), authority_.end(), item);
-        
-    //     if (ref != authority_.end()) {
-    //         return (ref - authority_.begin());
-    //     }
-    //     return - 1;
-    // }
 };
 
 

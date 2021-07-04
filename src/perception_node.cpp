@@ -5,6 +5,7 @@
 #include <geometry_msgs/PointStamped.h>
 #include <vision_msgs/BoundingBox3DArray.h>
 
+// Percept UAV's and straits position
 class Perception {
 private:
     ros::NodeHandle nh_;
@@ -15,7 +16,6 @@ private:
     ros::Publisher positions_of_detected_uavs_pub;
     ros::Subscriber color_image_raw_sub;
     ros::Subscriber depth_image_raw_sub;
-    ros::Subscriber depth_points_sub;
 
     int swarm_size_;
     std::string mav_name_;
@@ -80,6 +80,7 @@ private:
         }
     }
 
+    // TODO: detect straits using camera
     void publishStraits() {
         vision_msgs::BoundingBox3D temp_box;
         vision_msgs::BoundingBox3DArray detected_straits;
@@ -98,8 +99,8 @@ private:
             
             
             // strait_1
-            temp_box.center.position.x = transformStamped[0].transform.translation.x + 1.5;
-            temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.1;
+            temp_box.center.position.x = transformStamped[0].transform.translation.x - 3.5;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.6;
             temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
             temp_box.center.orientation.x = 0.0;
             temp_box.center.orientation.y = 0.0;
@@ -122,28 +123,28 @@ private:
             // detected_straits.boxes.push_back(temp_box);
             
             // strait_3
-            // temp_box.center.position.x = transformStamped[0].transform.translation.x + 0.6;
-            // temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.3;
-            // temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
-            // temp_box.center.orientation.x = 0.0;
-            // temp_box.center.orientation.y = 0.0;
-            // temp_box.center.orientation.z = 0.0;
-            // temp_box.size.x = 0.0;
-            // temp_box.size.y = 1.0;
-            // temp_box.size.z = 0.5;
-            // detected_straits.boxes.push_back(temp_box);
+            temp_box.center.position.x = transformStamped[0].transform.translation.x + 1.5;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y - 2.1;
+            temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
+            temp_box.center.orientation.x = 0.0;
+            temp_box.center.orientation.y = 0.0;
+            temp_box.center.orientation.z = 0.0;
+            temp_box.size.x = 0.0;
+            temp_box.size.y = 1.0;
+            temp_box.size.z = 0.5;
+            detected_straits.boxes.push_back(temp_box);
 
             // strait_4
-            // temp_box.center.position.x = transformStamped[0].transform.translation.x + 0.0;
-            // temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.6;
-            // temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
-            // temp_box.center.orientation.x = 0.0;
-            // temp_box.center.orientation.y = 0.0;
-            // temp_box.center.orientation.z = 0.0;
-            // temp_box.size.x = 0.0;
-            // temp// strait_8_box.size.y = 1.0;
-            // temp_box.size.z = 0.5;
-            // detected_straits.boxes.push_back(temp_box);
+            temp_box.center.position.x = transformStamped[0].transform.translation.x + 1.5;
+            temp_box.center.position.y = transformStamped[0].transform.translation.y + 2.1;
+            temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
+            temp_box.center.orientation.x = 0.0;
+            temp_box.center.orientation.y = 0.0;
+            temp_box.center.orientation.z = 0.0;
+            temp_box.size.x = 0.0;
+            temp_box.size.y = 1.0;
+            temp_box.size.z = 0.5;
+            detected_straits.boxes.push_back(temp_box);
 
             // strait_5
             // temp_box.center.position.x = transformStamped[0].transform.translation.x - 0.6;
@@ -182,7 +183,7 @@ private:
             // detected_straits.boxes.push_back(temp_box);
 
             // strait_8
-            temp_box.center.position.x = transformStamped[0].transform.translation.x - 6.0;
+            temp_box.center.position.x = transformStamped[0].transform.translation.x - 10.0;
             temp_box.center.position.y = transformStamped[0].transform.translation.y + 1.0;
             temp_box.center.position.z = transformStamped[0].transform.translation.z + 1.6;
             temp_box.center.orientation.x = 0.0;

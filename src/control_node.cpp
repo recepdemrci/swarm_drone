@@ -3,6 +3,7 @@
 #include <geometry_msgs/PointStamped.h>
 
 
+// Provide goal_position for swarm (if leader selection is active it will only control leader)
 class Control {
 private:
     ros::NodeHandle nh_;
@@ -43,6 +44,7 @@ private:
 
     }
 
+    // TODO: Provide goal position using remote control (roll-pitch-yaw)
     void publishGoalDirection() {
         geometry_msgs::PointStamped goal_direction;
 
